@@ -17,7 +17,7 @@ namespace {
 /* How much onchain funds to add when emitting NeedsOnchainFunds.  */
 auto const needs_reserve = Ln::Amount::sat(30000);
 /* How much we are willing to emit as "needs onchain".  */
-auto const max_needs_onchain = Ln::Amount::btc(0.010);
+auto const max_needs_onchain = Ln::Amount::btc(0.10);
 
 /* If our onchain funds are below this % of our total, hold off on
  * creating channels.
@@ -27,16 +27,16 @@ auto const onchain_percent_min = double(10);
  * total funds, create channels.
  * If below this, wait for low-fee region.
  */
-auto const onchain_percent_max = double(25);
+auto const onchain_percent_max = double(33);
 
 /* If onchain funds are above or equal to this amount, but in
  * onchain-percent terms is below onchain_percent_min, create
  * channels anyway --- the channels are going to be fairly
  * large still, so okay even if below onchain_percent_min.
  * This only comes into play for really rich nodes with
- * 1.6777215 BTC or more.
+ * 10 BTC or more.
  */
-auto const max_onchain_holdoff = Ln::Amount::sat(16777215);
+auto const max_onchain_holdoff = Ln::Amount::sat(100000000);
 
 }
 
@@ -178,7 +178,7 @@ private:
 					      , comment
 					      ]() {
 			return Boss::log( bus, Info
-					, "ChannelCreationDecider: %s."
+					, "ChannelCreationDecider: %s. "
 					  "Will create channels worth %s "
 					  "(%s reserved for onchain actions)."
 					, comment.c_str()

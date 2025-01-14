@@ -612,8 +612,8 @@ will make.
 
 The defaults are:
 
-* Minimum: 500000sats = 5mBTC
-* Maximum: 16777215sats = 167.77215mBTC
+* Minimum:    500000sats = 5mBTC
+* Maximum: 100000000sats = 1000mBTC
 
 The channel-creation planner requires
 `max-channel >= 3 * min-channel + 20000`.
