@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- `ChannelCreationDecider` now holds off on creating channels if the onchain amount is small relative to all your funds and is small for a "large" channel (1 BTC).
+- Default maximum channel size is now 1 BTC.
+- Increment of default reserve to 100000 satoshi.
+
 ### Upgrading from 0.16.x
 
 - Core Lightning **v26.04 or later** (v25.09 is the hard floor; see
