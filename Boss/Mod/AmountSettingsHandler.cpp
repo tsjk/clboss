@@ -15,23 +15,23 @@
 namespace {
 
 /* Default channel boundaries.  */
-auto const default_min_channel = Ln::Amount::sat(  500000);
-auto const default_max_channel = Ln::Amount::sat(16777215);
+auto const default_min_channel = Ln::Amount::sat(   500000);
+auto const default_max_channel = Ln::Amount::sat(100000000);
 
 /* Default amount to always leave onchain for future
  * channel management actions.  */
-auto const default_reserve =     Ln::Amount::sat(   30000);
+auto const default_reserve =     Ln::Amount::sat(   100000);
 
 /* The absolute lowest min_channel setting.  */
-auto const min_min_channel =     Ln::Amount::sat(  500000);
+auto const min_min_channel =     Ln::Amount::sat(   500000);
 /* How much larger the max_channel should be over the min_channel.  */
-auto const max_channel_factor = double(2.0);
+auto const max_channel_factor = double(5.0);
 /* How much larger the channel-creation trigger should be over
  * the min_channel.  */
 auto const trigger_factor = double(2.0);
 /* How much to add to the channel-creation trigger above, to get
  * the amount to leave after creation.  */
-auto const additional_remaining = Ln::Amount::sat(20000);
+auto const additional_remaining = Ln::Amount::sat(50000);
 
 Ln::Amount parse_sats(Jsmn::Object value) {
 	auto is = std::istringstream(std::string(value));
