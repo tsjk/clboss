@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Changed
+
+- `ChannelCreationDecider` now holds off on creating channels if the onchain amount is small relative to all your funds and is small for a "large" channel (1 BTC).
+- Default maximum channel size is now 1 BTC.
+- Increment of default reserve to 100000 satoshi.
+
 ## [next rev]
 
 ## [0.15.1] - 2025-10-07: "Dancing in the Dark Liquidity"
