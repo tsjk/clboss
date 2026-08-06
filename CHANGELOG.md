@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.16.1] - Unreleased
+
+### Fixed
+
+- Fixed "Unhandled exception in concurrent task! Incorrect type." on
+  newer CLN: the `channel_state_changed` notification for a brand-new
+  channel no longer carries `old_state` (deprecated in CLN v25.05,
+  absent as of v26.06), which crashed the parse in
+  `ChannelCreateDestroyMonitor`. ([#321])
+- Fixed `newaddr` handling for modern CLN, which no longer returns
+  bech32 addresses by default: the address request now asks for p2tr.
+  Previously the first swap attempt threw the same "Incorrect type."
+  and silently disabled clboss-initiated swaps until restart. ([#321])
+
 ## [0.16.0] - 2026-04-21: "Darkness on the Edge of the Mempool"
 
 ### Added
