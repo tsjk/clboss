@@ -4,6 +4,7 @@
 #include"Boss/Msg/SolicitHtlcAcceptedDeferrer.hpp"
 #include"Boss/Msg/TimerRandomHourly.hpp"
 #include"Boss/concurrent.hpp"
+#include"Boss/log.hpp"
 #include"Ev/Io.hpp"
 #include"Ev/now.hpp"
 #include"Ln/HtlcAccepted.hpp"
@@ -29,6 +30,26 @@ void Claimer::start() {
 
 			if (r.payment_secret != payment_secret)
 				return Ev::lift(false);
+
+			/* Resolve only an exact-amount HTLC: the
+			 * last-hop peer relays our onion intact but
+			 * chooses the offered amount, and a short
+			 * HTLC would still buy the preimage that
+			 * claims the full amount upstream.  */
+			if (r.incoming_amount != it->second.expected_amount)
+				return Boss::log( bus, Warn
+						, "FundsMover::Claimer: HTLC "
+						  "for known payment hash has "
+						  "amount %s, expected %s; "
+						  "not resolving."
+						, std::string(r.incoming_amount)
+							.c_str()
+						, std::string(it->second
+								.expected_amount)
+							.c_str()
+						).then([]() {
+					return Ev::lift(false);
+				});
 
 			/* Extract data.  */
 			auto id = r.id;
@@ -74,7 +95,7 @@ void Claimer::start() {
 	});
 }
 
-std::pair<Ln::Preimage, Ln::Preimage> Claimer::generate() {
+std::pair<Ln::Preimage, Ln::Preimage> Claimer::generate(Ln::Amount expected_amount) {
 	auto pre = Ln::Preimage(rand);
 	auto sec = Ln::Preimage(rand);
 
@@ -83,6 +104,7 @@ std::pair<Ln::Preimage, Ln::Preimage> Claimer::generate() {
 	entry.timeout = Ev::now() + timeout;
 	entry.preimage = pre;
 	entry.payment_secret = sec;
+	entry.expected_amount = expected_amount;
 
 	return std::make_pair(std::move(pre), std::move(sec));
 }
