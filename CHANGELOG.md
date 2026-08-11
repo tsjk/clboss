@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.16.2] - Unreleased
+
+### Security
+
+- Fixed a theft vector in `FundsMover` self-payments: the returning
+  HTLC was settled by matching only payment hash and payment secret,
+  without checking the amount. The last-hop peer relays our onion
+  (and thus the secret) intact but chooses the offered amount, so it
+  could settle a reduced amount, learn the preimage, and claim the
+  full amount upstream. The claim now requires the exact constructed
+  amount before the preimage is released. ([#322])
+
 ## [0.16.1] - 2026-08-06: "The Types That Bind"
 
 ### Fixed
