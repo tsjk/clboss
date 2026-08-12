@@ -595,6 +595,7 @@ TESTS = \
 	tests/bitcoin/test_serial \
 	tests/bitcoin/test_sighash \
 	tests/bitcoin/test_tx \
+	tests/boltz/test_claimtxhandler_scoped_update \
 	tests/boltz/test_match_lockscript \
 	tests/boss/channelcandidateinvestigator/test_gumshoe \
 	tests/boss/channelcandidateinvestigator/test_secretary \

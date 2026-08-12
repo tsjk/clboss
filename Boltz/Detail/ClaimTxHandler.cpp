@@ -231,12 +231,16 @@ Ev::Io<void> ClaimTxHandler::core_run() {
 		     , lockupOut = :lockupOut
 		     , lockupConfirmedHeight = :blockheight
 		     , lockupClaimFees = :lockupClaimFees
+		 WHERE apiAccess = :apiAccess
+		   AND swapId = :swapId
 		     ;
 		)QRY")
 			.bind(":lockup_txid", std::string(lockup_txid))
 			.bind(":lockupOut", lockupOut)
 			.bind(":blockheight", blockheight)
 			.bind(":lockupClaimFees", lockupClaimFees.to_sat())
+			.bind(":apiAccess", api_endpoint)
+			.bind(":swapId", swapId)
 			.execute();
 		tx.commit();
 
