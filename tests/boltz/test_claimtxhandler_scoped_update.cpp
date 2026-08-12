@@ -140,8 +140,8 @@ int main() {
 	auto env = MockEnv(broadcast_called);
 	auto signer = MockSigner();
 
-	auto insert_swap = [&](std::string swapId) {
-		return db.transact().then([&, swapId](Sqlite3::Tx tx) {
+	auto insert_swap = [&](std::string apiAccess, std::string swapId) {
+		return db.transact().then([&, apiAccess, swapId](Sqlite3::Tx tx) {
 			tx.query(R"QRY(
 			INSERT INTO "BoltzServiceFactory_rsub"
 			     ( apiAccess
@@ -168,7 +168,7 @@ int main() {
 			     , ''
 			     );
 			)QRY")
-				.bind(":apiAccess", api)
+				.bind(":apiAccess", apiAccess)
 				.bind(":tweak", tweak)
 				.bind(":preimage", preimage)
 				.bind(":destinationAddress", addr)
@@ -188,9 +188,15 @@ int main() {
 		tx.query_execute(schema);
 		tx.commit();
 		/* Two swaps in flight at once.  */
-		return insert_swap("swapA");
+		return insert_swap(api, "swapA");
 	}).then([&]() {
-		return insert_swap("swapB");
+		return insert_swap(api, "swapB");
+	}).then([&]() {
+		/* A third swap with the same swapId under a different
+		 * apiAccess, so the test fails if the apiAccess
+		 * predicate is dropped from the update.
+		 */
+		return insert_swap("other-api", "swapA");
 	}).then([&]() {
 		/* Claim the first swap.  */
 		auto handler = Boltz::Detail::ClaimTxHandler::create(
