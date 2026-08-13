@@ -4,6 +4,35 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.16.3] - Unreleased
+
+### Security
+
+- Fixed sibling-swap corruption in the Boltz reverse-swap claim path:
+  the UPDATE persisting a successful claim had no WHERE clause, so it
+  stamped every in-flight swap row as claimed and blocked sibling
+  swaps at the "Already broadcasted claim tx." early exit. The update
+  is now scoped to the claimed swap. Present since the file's first
+  commit (2020); affected funds were recoverable after the timelock,
+  no theft path. Reported by Vincenzo Palazzo. ([#325])
+
+- Fixed a fee-budget race in `JitRebalancer`: every incoming forward
+  HTLC spawned a concurrent rebalance with no per-destination guard,
+  so several in-flight HTLCs toward the same depleted channel
+  launched that many full-size rebalances against a stale
+  expenditure budget — fees paid on each, and the recorded
+  overspend then blocked legitimate JIT rebalances for that channel.
+  An in-flight guard now admits one rebalance per destination at a
+  time. Reported by Moin. ([#323])
+
+- Fixed auto-close (experimental, opt-in) force-closing offline
+  peers: `close` was issued with a 180-second unilateral timeout
+  regardless of the peer's connection state, while one complaint
+  source selects peers specifically for a low connect rate. Closes
+  now wait for the peer to come online (polled every 10 minutes) and
+  fall back to a unilateral close at low feerates only after a
+  persisted 3-day patience window. Reported by Moin. ([#324])
+
 ## [0.16.2] - 2026-08-11: "Leak of Faith"
 
 ### Security
