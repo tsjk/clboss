@@ -623,6 +623,7 @@ TESTS = \
 	tests/boss/test_peerjudge_algo \
 	tests/boss/test_peerjudge_datagatherer \
 	tests/boss/test_peerstatistician \
+	tests/boss/test_peercomplaintsdesk_main \
 	tests/boss/test_peercomplaintsdesk_recorder \
 	tests/boss/test_reqresp \
 	tests/boss/test_rpc \

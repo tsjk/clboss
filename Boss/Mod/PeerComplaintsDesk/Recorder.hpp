@@ -3,6 +3,7 @@
 
 #include<map>
 #include<cstddef>
+#include<memory>
 #include<string>
 #include<vector>
 
@@ -81,6 +82,38 @@ namespace Recorder {
 	 * separate area.
 	 */
 	void channel_closed(Sqlite3::Tx&, Ln::NodeId const&);
+
+	/** Boss::Mod::PeerComplaintsDesk::Recorder::note_close_pending
+	 *
+	 * @brief records the time a close was first deferred
+	 * because the peer was offline.  Does not change an
+	 * existing record.
+	 */
+	void note_close_pending( Sqlite3::Tx&
+			       , Ln::NodeId const&
+			       , double since
+			       );
+	/** Boss::Mod::PeerComplaintsDesk::Recorder::get_close_pendings
+	 *
+	 * @brief gathers the first-deferred times of all peers
+	 * with a deferred close.
+	 */
+	std::map< Ln::NodeId
+		, double
+		> get_close_pendings(Sqlite3::Tx&);
+	/** Boss::Mod::PeerComplaintsDesk::Recorder::get_close_pending
+	 *
+	 * @brief the first-deferred time of one peer, or nullptr
+	 * if the peer has no deferred close.
+	 */
+	std::unique_ptr<double> get_close_pending( Sqlite3::Tx&
+						 , Ln::NodeId const&
+						 );
+	/** Boss::Mod::PeerComplaintsDesk::Recorder::clear_close_pending
+	 *
+	 * @brief forgets the deferred-close time of a peer.
+	 */
+	void clear_close_pending(Sqlite3::Tx&, Ln::NodeId const&);
 	/** Boss::Mod::PeerComplaintsDesk::Recorder::get_closed_complaints
 	 *
 	 * @brief gathers all remembered non-ignored complaints for

@@ -21,12 +21,16 @@
 #include"Boss/Msg/TimerTwiceDaily.hpp"
 #include"Boss/concurrent.hpp"
 #include"Boss/log.hpp"
+#include"Ev/now.hpp"
 #include"Jsmn/Object.hpp"
 #include"Json/Out.hpp"
 #include"S/Bus.hpp"
 #include"Sqlite3.hpp"
 #include"Util/make_unique.hpp"
 #include"Util/stringify.hpp"
+#include<algorithm>
+#include<assert.h>
+#include<memory>
 
 namespace {
 
@@ -46,6 +50,12 @@ auto constexpr channel_close_timeout = std::size_t(3 * 60);
 /* How strongly do we insist on our own feerate.  */
 auto const fee_negotiation_step = std::string("1");
 
+/* How long we wait for an offline peer to come back for a
+ * mutual close before giving up and closing anyway, letting
+ * the unilateral timeout escalate.
+ */
+auto constexpr close_patience = double(3 * 24 * 60 * 60);
+
 }
 
 namespace Boss { namespace Mod { namespace PeerComplaintsDesk {
@@ -64,7 +74,6 @@ private:
 	Boss::Mod::Rpc* rpc;
 
 	bool soliciting;
-	bool should_close;
 	bool fees_low;
 
 	std::map<Ln::NodeId, std::string> exempted_nodes;
@@ -80,7 +89,6 @@ private:
 		enabled = default_enabled;
 		rpc = nullptr;
 		soliciting = false;
-		should_close = false;
 		fees_low = false;
 		exempted_nodes.clear();
 		pending_complaints.clear();
@@ -140,11 +148,14 @@ private:
 			     + Boss::concurrent(cleanup())
 			     ;
 		});
+		/* Poll close candidates every 10 minutes: a flaky
+		 * peer's brief online windows should actually get
+		 * caught for a mutual close.
+		 */
 		bus.subscribe<Msg::Timer10Minutes
 			     >([this](Msg::Timer10Minutes const& _) {
-			if (!should_close || !rpc)
+			if (!rpc)
 				return Ev::lift();
-			should_close = false;
 			return Boss::concurrent(check_close());
 		});
 
@@ -243,8 +254,6 @@ private:
 
 			/* Finished soliciting.  */
 			soliciting = false;
-			/* Schedule closures for next 10-minute timer.  */
-			should_close = true;
 			/* Do not waste memory.  */
 			exempted_nodes.clear();
 			pending_complaints.clear();
@@ -262,26 +271,8 @@ private:
 		});
 	}
 	Ev::Io<void> check_close() {
-		return Ev::lift().then([this]() {
-			if (!fees_low) {
-				/* Do not spam logs if we are not enabled
-				 * anyway.  */
-				if (!enabled)
-					return Ev::lift();
-
-				return Boss::log( bus, Info
-						, "PeerComplaintsDesk: "
-						  "Fees are not known to be low, "
-						  "will not close high-complaints channels."
-						);
-			}
-			return actual_check_close();
-		});
-	}
-	Ev::Io<void> actual_check_close() {
 		return db.transact().then([this](Sqlite3::Tx tx) {
 			auto complaints = Recorder::check_complaints(tx);
-			tx.commit();
 
 			auto const& unmanaged = unmanager.get_unmanaged();
 
@@ -317,6 +308,21 @@ private:
 				if (c.second >= max_acceptable_complaints)
 					to_close.push_back(c.first);
 			}
+			/* Forget deferred closes for peers no longer
+			 * over the threshold (recovered, unmanaged,
+			 * or channel gone).
+			 */
+			for (auto& kv : Recorder::get_close_pendings(tx)) {
+				if (std::find( to_close.begin()
+					     , to_close.end()
+					     , kv.first
+					     ) == to_close.end())
+					Recorder::clear_close_pending( tx
+								     , kv.first
+								     );
+			}
+			tx.commit();
+
 			if (!first)
 				act += Boss::log( bus, Debug
 						, "PeerComplaintsDesk: Complaints: %s"
@@ -357,13 +363,85 @@ private:
 			auto parms = Json::Out()
 				.start_object()
 					.field("id", Util::stringify(p))
-					.field("unilateraltimeout", channel_close_timeout)
-					.field("fee_negotiation_step", fee_negotiation_step)
 				.end_object()
 				;
-			return rpc->command("close", parms);
-		}).then([](Jsmn::Object _) {
-			return Ev::lift();
+			return rpc->command("listpeerchannels", std::move(parms));
+		}).then([this, p](Jsmn::Object res) {
+			auto connected = false;
+			if (res.has("channels")) {
+				auto cs = res["channels"];
+				for (auto c : cs) {
+					if (!c.has("peer_connected"))
+						continue;
+					auto conn = c["peer_connected"];
+					if (!conn.is_boolean())
+						continue;
+					if (bool(conn)) {
+						connected = true;
+						break;
+					}
+				}
+			}
+			if (connected) {
+				/* Take the mutual close as soon as the
+				 * peer is reachable, regardless of the
+				 * feerate: a mutual close even at high
+				 * fees is cheaper than a unilateral at
+				 * low fees, and online windows for these
+				 * peers are rare.
+				 */
+				return db.transact(
+				).then([p](Sqlite3::Tx tx) {
+					Recorder::clear_close_pending(tx, p);
+					tx.commit();
+					return Ev::lift();
+				}).then([this, p]() {
+					return do_close(p);
+				});
+			}
+			/* Offline: wait for a mutual-close window
+			 * until patience runs out.  The deferral is
+			 * persisted, so a restart does not reset
+			 * the patience window.
+			 */
+			return db.transact(
+			).then([p](Sqlite3::Tx tx) {
+				Recorder::note_close_pending(tx, p, Ev::now());
+				auto since = Recorder::get_close_pending(tx, p);
+				tx.commit();
+				assert(since);
+				return Ev::lift(*since);
+			}).then([this, p](double since) {
+				if (Ev::now() - since < close_patience)
+					return Boss::log( bus, Debug
+							, "PeerComplaintsDesk: %s is "
+							  "not connected, deferring "
+							  "close while waiting for a "
+							  "mutual-close window."
+							, Util::stringify(p).c_str()
+							);
+				/* Patience expired: get it over
+				 * with, but only when fees are low —
+				 * the unilateral path is the
+				 * expensive one.
+				 */
+				if (!fees_low)
+					return Boss::log( bus, Debug
+							, "PeerComplaintsDesk: %s close "
+							  "patience expired, holding "
+							  "unilateral close until fees "
+							  "are low."
+							, Util::stringify(p).c_str()
+							);
+				return Boss::log( bus, Info
+						, "PeerComplaintsDesk: %s never "
+						  "came back online, closing "
+						  "anyway."
+						, Util::stringify(p).c_str()
+						).then([this, p]() {
+					return do_close(p);
+				});
+			});
 		}).catching<RpcError>([this, p](RpcError e) {
 			return Boss::log( bus, Error
 					, "PeerComplaintsDesk: close %s error: %s"
@@ -372,8 +450,22 @@ private:
 					);
 		});
 	}
+	Ev::Io<void> do_close(Ln::NodeId const& p) {
+		auto parms = Json::Out()
+			.start_object()
+				.field("id", Util::stringify(p))
+				.field("unilateraltimeout", channel_close_timeout)
+				.field("fee_negotiation_step", fee_negotiation_step)
+			.end_object()
+			;
+		return rpc->command("close", std::move(parms))
+			.then([](Jsmn::Object _) {
+			return Ev::lift();
+		});
+	}
 	Ev::Io<void> on_channel_destroy(Ln::NodeId const& p) {
 		return db.transact().then([p](Sqlite3::Tx tx) {
+			Recorder::clear_close_pending(tx, p);
 			Recorder::channel_closed(tx, p);
 			tx.commit();
 			return Ev::lift();
