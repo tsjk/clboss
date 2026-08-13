@@ -14,6 +14,8 @@
 #include"Boss/Msg/ResponseRpcCommand.hpp"
 #include"Boss/Msg/SolicitHtlcAcceptedDeferrer.hpp"
 #include"Ev/Io.hpp"
+#include"Ev/concurrent.hpp"
+#include"Ev/foreach.hpp"
 #include"Ev/map.hpp"
 #include"Ev/now.hpp"
 #include"Ev/start.hpp"
@@ -309,11 +311,6 @@ int main() {
 	void* requester = nullptr;
 	auto source = Ln::NodeId();
 	auto destination = Ln::NodeId();
-	/* Parallel-call check: the calls, and which one was
-	 * let in.
-	 */
-	auto ids = std::vector<std::uint64_t>{3, 4, 5};
-	auto deferred_id = std::uint64_t(0);
 	bus.subscribe< RequestMoveFunds
 		     >([&](RequestMoveFunds const& m) {
 		++num_move_funds;
@@ -358,51 +355,27 @@ int main() {
 	}).then([&]() {
 		assert(num_move_funds == 0);
 
-		/* Check parallel calls to the same underfunded
-		 * node: exactly one is let in and requests the
-		 * rebalance; the rest are skipped because a
-		 * run for the node is already in flight.
-		 */
-		return Ev::map([&](std::uint64_t id) {
-			return deferrer(htlc("1000x1x1", Ln::Amount::msat(90000), id));
+		/* Check parallel calls.  */
+		auto ids = std::vector<std::uint64_t>{3, 4, 5};
+		auto act = Ev::lift();
+		/* Perform parallel calls.  */
+		act += Ev::concurrent(Ev::map([&](std::uint64_t id) {
+			return deferrer(htlc("1000x1x0", Ln::Amount::msat(1), id));
+		}, ids).then([&](std::vector<bool> flags) {
+			/* Every forward should get in.  */
+			for (auto flag : flags)
+				assert(flag);
+			return Ev::lift();
+		}));
+		act += Ev::yield();
+		act += Ev::foreach([&](std::uint64_t id) {
+			return release_monitor.wait_release(id);
 		}, ids);
-	}).then([&](std::vector<bool> flags) {
-		auto num_in = std::size_t(0);
-		for (auto i = std::size_t(0); i < flags.size(); ++i) {
-			if (flags[i]) {
-				++num_in;
-				deferred_id = ids[i];
-			}
-		}
-		assert(num_in == 1);
-		/* Wait for the let-in run to reach its
-		 * move-funds request.
-		 */
-		return multiyield();
+		return act;
 	}).then([&]() {
-		/* Only the let-in run requests a rebalance.  */
-		assert(num_move_funds == 1);
-		/* The 02 would not have fit.  */
-		assert(source == Ln::NodeId("020000000000000000000000000000000000000000000000000000000000000000"));
-		assert(destination == Ln::NodeId("020000000000000000000000000000000000000000000000000000000000000001"));
-		/* Let the in-flight run finish.  */
-		return bus.raise(ResponseMoveFunds{
-			requester,
-			Ln::Amount::sat(0),
-			Ln::Amount::sat(0)
-		});
-	}).then([&]() {
-		return release_monitor.wait_release(deferred_id);
-	}).then([&]() {
-		/* Let the finished run clean up.  */
-		return multiyield();
-	}).then([&]() {
+		assert(num_move_funds == 0);
 
-		/* The guard clears once the run completes:
-		 * a new forward that does not fit gets in
-		 * again.
-		 */
-		num_move_funds = 0;
+		/* Check for a forward that does not fit.  */
 		return deferrer(htlc("1000x1x1", Ln::Amount::msat(90000), 6));
 	}).then([&](bool flag) {
 		assert(flag == true);

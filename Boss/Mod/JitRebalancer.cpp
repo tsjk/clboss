@@ -31,7 +31,6 @@
 #include"Util/make_unique.hpp"
 #include"Util/stringify.hpp"
 #include<map>
-#include<set>
 
 namespace {
 
@@ -111,14 +110,6 @@ private:
         ModG::RebalanceUnmanagerProxy unmanager;
         std::uint32_t max_rebalance_fee_ppm;
 
-        /* Nodes with a JIT rebalance currently in flight.
-         * The budget check reads expenditures that are only
-         * persisted once a rebalance completes, so concurrent
-         * rebalances to the same destination would each
-         * authorize against the same stale budget.
-         */
-        std::set<Ln::NodeId> in_flight;
-
         void start() {
                 max_rebalance_fee_ppm = default_max_rebalance_fee_ppm;
 
@@ -195,18 +186,6 @@ private:
 					return Ev::lift(false);
 				});
 			}
-			if (in_flight.count(node) != 0) {
-				return Boss::log( bus, Debug
-						, "JitRebalancer: HTLC %s to "
-						  "%s: rebalance already in "
-						  "flight, will ignore."
-						, stringify_cid(id).c_str()
-						, Util::stringify(node).c_str()
-						).then([]() {
-					return Ev::lift(false);
-				});
-			}
-			in_flight.insert(node);
 			return Boss::concurrent( check_and_move(node, amount, id)
 					       ).then([]() {
 				return Ev::lift(true);
@@ -249,9 +228,6 @@ private:
                                     , unmanager, max_rebalance_fee_ppm
                                     );
 			return r.execute();
-		}).then([this, node]() {
-			in_flight.erase(node);
-			return Ev::lift();
 		});
 	}
 

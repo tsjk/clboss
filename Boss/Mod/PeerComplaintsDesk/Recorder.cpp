@@ -3,6 +3,8 @@
 #include"Ln/NodeId.hpp"
 #include"Sqlite3.hpp"
 #include"Util/date.hpp"
+#include"Util/make_unique.hpp"
+#include<memory>
 #include<sstream>
 
 #include<iostream>
@@ -53,6 +55,15 @@ void Recorder::initialize(Sqlite3::Tx& tx) {
 	       "PeerComplaintsDesk_closedcomplaints_time"
 	    ON "PeerComplaintsDesk_closedcomplaints"(closedtime)
 	     ;
+
+	CREATE TABLE IF NOT EXISTS
+	       "PeerComplaintsDesk_closepending"
+	     ( peerdbid INTEGER PRIMARY KEY
+	     , since REAL NOT NULL
+	     , FOREIGN KEY(peerdbid)
+	       REFERENCES "PeerComplaintsDesk_peers"(peerdbid)
+	       ON DELETE CASCADE
+	     );
 	)QRY");
 }
 void Recorder::cleanup( Sqlite3::Tx& tx
@@ -286,6 +297,71 @@ void Recorder::channel_closed(Sqlite3::Tx& tx, Ln::NodeId const& nid) {
 		.execute()
 		;
 }
+void Recorder::note_close_pending( Sqlite3::Tx& tx
+				 , Ln::NodeId const& peer
+				 , double since
+				 ) {
+	auto peerdbid = get_peerdbid(tx, peer);
+	tx.query(R"QRY(
+	INSERT OR IGNORE INTO "PeerComplaintsDesk_closepending"
+	      (  peerdbid,  since)
+	VALUES( :peerdbid, :since);
+	)QRY")
+		.bind(":peerdbid", peerdbid)
+		.bind(":since", since)
+		.execute()
+		;
+}
+std::map< Ln::NodeId
+	, double
+	> Recorder::get_close_pendings(Sqlite3::Tx& tx) {
+	auto rv = std::map<Ln::NodeId, double>();
+
+	auto fetch = tx.query(R"QRY(
+	SELECT nodeid, since
+	  FROM "PeerComplaintsDesk_peers" NATURAL JOIN
+	       "PeerComplaintsDesk_closepending"
+	    ;
+	)QRY").execute();
+	for (auto& r : fetch)
+		rv[Ln::NodeId(r.get<std::string>(0))] = r.get<double>(1);
+
+	return rv;
+}
+std::unique_ptr<double> Recorder::get_close_pending( Sqlite3::Tx& tx
+						   , Ln::NodeId const& peer
+						   ) {
+	auto rv = std::unique_ptr<double>();
+
+	auto fetch = tx.query(R"QRY(
+	SELECT since
+	  FROM "PeerComplaintsDesk_peers" NATURAL JOIN
+	       "PeerComplaintsDesk_closepending"
+	 WHERE nodeid = :nodeid
+	    ;
+	)QRY")
+		.bind(":nodeid", std::string(peer))
+		.execute();
+	for (auto& r : fetch)
+		rv = Util::make_unique<double>(r.get<double>(0));
+
+	return rv;
+}
+void Recorder::clear_close_pending( Sqlite3::Tx& tx
+				  , Ln::NodeId const& peer
+				  ) {
+	tx.query(R"QRY(
+	DELETE FROM "PeerComplaintsDesk_closepending"
+	 WHERE peerdbid = (SELECT peerdbid
+	                     FROM "PeerComplaintsDesk_peers"
+	                    WHERE nodeid = :nodeid)
+	     ;
+	)QRY")
+		.bind(":nodeid", std::string(peer))
+		.execute()
+		;
+}
+
 std::map< Ln::NodeId
 	, std::vector<std::string>
 	> Recorder::get_closed_complaints(Sqlite3::Tx& tx) {
