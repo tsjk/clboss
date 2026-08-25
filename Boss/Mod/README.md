@@ -445,9 +445,8 @@ Any module can "tap into" the `Req` and/or `Resp` of another
 module, and keep track of various statistics about how often
 those bits of functionality get called.
 For example, a module could be written that just subscribes
-to `RequestMoveFunds` and `ResponseMoveFunds`, which then
-keeps statistics on how often and how much fund movements can
-actually succeed.
+to `RequestPeerFromScid` and `ResponsePeerFromScid`, which then
+keeps statistics on how often a channel lookup misses.
 Then that module can expose this information.
 
 Indeed, the other blocking interfaces, `Boss::Mod::Rpc` and

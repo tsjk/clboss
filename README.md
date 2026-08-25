@@ -49,7 +49,7 @@ All history and prior contributions remain credited to their original authors.
 Dependencies
 ------------
 
-If you are installing from some official [source release tarball](https://github.com/ZmnSCPxj/clboss/releases),
+If you are installing from some official [source release tarball](https://github.com/ksedgwic/clboss/releases),
 you only need the below packages installed.
 
 Debian-derived systems:
@@ -121,7 +121,7 @@ CLN carries backports of what CLBOSS needs (askrene `getroutes` with
 `--clboss-skip-cln-version-check`.  Users on older CLN releases
 should stay on CLBOSS 0.16.x.
 
-From an [official source release](https://github.com/ZmnSCPxj/clboss/releases), just:
+From an [official source release](https://github.com/ksedgwic/clboss/releases), just:
 
     ./configure && make
     sudo make install # or su first, then make install
@@ -501,6 +501,11 @@ To resume full management of the node, give an empty string:
 
     lightning-cli clboss-unmanage ${NODEID} ""
 
+`clboss-unmanage` logs nothing.  To see the current tags, read
+them back from the status output:
+
+    lightning-cli clboss-status | jq .unmanaged
+
 The possible unmanagement tags are:
 
 * `lnfee` - Do not manage the channel fee of channels to this
@@ -662,7 +667,10 @@ All of the following are *dynamic* (`setconfig`) options:
 * `clboss-xrebalance-maxparts` — how many parts (paths) the
   min-cost-flow solve may split a transfer into.  Lower means fewer,
   fatter parts; higher means finer splitting and more learning but
-  more refusals.  Default `80`.
+  more refusals.  Default `80`.  Each `getroutes` call grows with
+  it, so `lightningd`'s `askrene-timeout` may need raising along
+  with it; for example, 30 seconds has been enough with the
+  default.
 * `clboss-xrebalance-grant` — assumed prior earnings rate (ppm),
   credited to every channeled peer as if already earned on one
   capacity-turn of volume; admits peers with no track record at that

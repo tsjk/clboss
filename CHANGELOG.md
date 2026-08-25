@@ -16,6 +16,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   CLBOSS runs everything except rebalancing.
 - Remove `clboss-max-rebalance-fee-ppm` from your configuration;
   `lightningd` refuses to start on an unknown option.
+- If you ran a development build from between 0.16.x and this
+  release, remove the persistent `askrene` layers it created,
+  `clboss` and `clboss-xrebalance`.  This release uses only the
+  `clboss-self` layer, and the old layers' node disables and channel
+  updates never age out (`askrene-age` trims only constraints and
+  biases), so `lightningd` would keep them indefinitely.  They only
+  affect routes CLBOSS asks for itself, so removing them is safe at
+  any time:
+
+      lightning-cli askrene-remove-layer clboss
+      lightning-cli askrene-remove-layer clboss-xrebalance
+
+  `lightning-cli askrene-listlayers` shows which layers exist.
+  Release builds of 0.16.x created no layers.
 - Nothing else to set: the new options need no settings to start,
   and their defaults are the values run on live nodes.
 
