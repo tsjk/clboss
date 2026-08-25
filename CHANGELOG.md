@@ -51,7 +51,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   fill and drain pools, the derived floor ladder, and the `xrebalance`
   request the widest cycle would send, as a dry-run command line.
   `contrib/cln-plugin-bounce` restarts named dynamic plugins in
-  dependency order and picks up config-file edits.
+  dependency order and picks up config-file edits; it applies the
+  edits only after checking, against the restarted plugins, that
+  every config-file option is still registered, since an option a
+  new build dropped leaves `lightningd` holding a stale configvar
+  that makes any optioned `plugin start` or `setconfig` crash it
+  until it restarts.
   `contrib/clboss-forwarding-stats --ids` prints full node ids in
   place of aliases.
 
