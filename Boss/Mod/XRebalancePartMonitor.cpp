@@ -131,21 +131,33 @@ Ev::Io<void> XRebalancePartMonitor::cont( Ln::NodeId source
 					, Ln::Amount amount
 					, Ln::Amount fee
 					) {
-	if (!source || !destination)
-		/* Funds moved but the channel is gone from
-		 * listpeerchannels (closed between part completion and
-		 * this lookup); the earnings go unattributed.  */
+	/* A miss means the mapper does not know the scid as one of
+	 * our channels: closed by the time of the lookup, or never
+	 * ours.  With both ends unknown there is nothing to book;
+	 * with one end unknown the known side is still booked, and
+	 * the tracker skips the null peer.  */
+	if (!source && !destination)
 		return Boss::log( bus, Warn
 				, "XRebalancePartMonitor: completed part on "
-				  "unknown channel, not attributed."
+				  "unknown channels, not attributed."
 				);
+	auto name = [](Ln::NodeId const& n) {
+		return n ? std::string(n) : std::string("unknown");
+	};
 
 	auto act = Ev::lift();
+	if (!source || !destination)
+		act += Boss::log( bus, Warn
+				, "XRebalancePartMonitor: completed part on "
+				  "an unknown channel, attributing the %s "
+				  "side only."
+				, source ? "source" : "destination"
+				);
 	act += Boss::log( bus, Debug
 			, "XRebalancePartMonitor: %s -> %s, "
 			  "moved %s, fee %s."
-			, std::string(source).c_str()
-			, std::string(destination).c_str()
+			, name(source).c_str()
+			, name(destination).c_str()
 			, std::string(amount).c_str()
 			, std::string(fee).c_str()
 			);

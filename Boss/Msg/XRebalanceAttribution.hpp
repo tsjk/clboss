@@ -24,6 +24,10 @@ namespace Boss { namespace Msg {
  * successful part identifies its actual (source_peer, dest_peer)
  * from the askrene route (first hop's node_id_out and the closing
  * hop's node_id_in).
+ *
+ * Either peer may be null when the scid on that end did not
+ * resolve to one of our channels; the tracker then books only the
+ * other side.  At least one side is always set.
  */
 struct XRebalanceAttribution {
 	/* Peer at the outbound end of the source channel used by this

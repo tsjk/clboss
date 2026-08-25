@@ -134,6 +134,29 @@ auto const malformed_part = R"JSON(
 { "surprise": true }
 )JSON";
 
+/* The source scid is not one of our channels as far as the mapper
+ * knows; the destination is.  The known side is still booked.  */
+auto const half_unknown_part = R"JSON(
+{
+  "status": "complete",
+  "first_hop": "3000x1x0/1",
+  "return_hop": "1000x1x0/0",
+  "delivered_msat": 40000000,
+  "fee_msat": 5000
+}
+)JSON";
+
+/* Neither scid is known: nothing to book.  */
+auto const both_unknown_part = R"JSON(
+{
+  "status": "complete",
+  "first_hop": "3000x1x0/1",
+  "return_hop": "3000x1x1/0",
+  "delivered_msat": 50000000,
+  "fee_msat": 6000
+}
+)JSON";
+
 }
 
 int main() {
@@ -148,10 +171,13 @@ int main() {
 	/* Utility.  */
 	Boss::Mod::PeerFromScidMapper mapper(bus);
 
-	/* Should occur once.  */
+	/* Should occur once.  The mapper manifests its own
+	 * channel_state_changed subscription; skip that.  */
 	auto got_manifest_notification = false;
 	bus.subscribe<Boss::Msg::ManifestNotification
 		     >([&](Boss::Msg::ManifestNotification const& m) {
+		if (m.name == "channel_state_changed")
+			return Ev::lift();
 		assert(!got_manifest_notification);
 		assert(m.name == "xrebalance_part");
 		got_manifest_notification = true;
@@ -253,6 +279,33 @@ int main() {
 		return bus.raise(Boss::Msg::Notification{
 			"xrebalance_part",
 			Jsmn::Object::parse_json(malformed_part)
+		});
+	}).then([&]() {
+		return Ev::yield(42);
+	}).then([&]() {
+		assert(!attribution);
+
+		/* One end unknown: attributed to the known end, the
+		 * other left null.  */
+		attribution = nullptr;
+		return bus.raise(Boss::Msg::Notification{
+			"xrebalance_part",
+			Jsmn::Object::parse_json(half_unknown_part)
+		});
+	}).then([&]() {
+		return Ev::yield(42);
+	}).then([&]() {
+		assert(attribution);
+		assert(!attribution->source);
+		assert(attribution->destination == Ln::NodeId("020000000000000000000000000000000000000000000000000000000000000000"));
+		assert(attribution->amount_moved == Ln::Amount::msat(40000000));
+		assert(attribution->fee_spent == Ln::Amount::msat(5000));
+
+		/* Both ends unknown: nothing attributed.  */
+		attribution = nullptr;
+		return bus.raise(Boss::Msg::Notification{
+			"xrebalance_part",
+			Jsmn::Object::parse_json(both_unknown_part)
 		});
 	}).then([&]() {
 		return Ev::yield(42);

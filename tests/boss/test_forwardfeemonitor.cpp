@@ -66,10 +66,13 @@ int main() {
 	/* Utility.  */
 	Boss::Mod::PeerFromScidMapper mapper(bus);
 
-	/* Should occur once.  */
+	/* Should occur once.  The mapper manifests its own
+	 * channel_state_changed subscription; skip that.  */
 	auto got_manifest_notification = false;
 	bus.subscribe<Boss::Msg::ManifestNotification
 		     >([&](Boss::Msg::ManifestNotification const& m) {
+		if (m.name == "channel_state_changed")
+			return Ev::lift();
 		assert(!got_manifest_notification);
 		assert(m.name == "forward_event");
 		got_manifest_notification = true;

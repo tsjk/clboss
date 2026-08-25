@@ -229,6 +229,64 @@ int main() {
                         )JSON"));
 		return Ev::lift();
 	}).then([&]() {
+		// A part whose destination end did not resolve books
+		// the source side only.
+		return bus.raise(Boss::Msg::XRebalanceAttribution{
+			C,			// source
+			Ln::NodeId(),		// destination unknown
+			Ln::Amount::sat(1000),	// amount_moved
+			Ln::Amount::sat(1)	// fee_spent
+		});
+	}).then([&]() {
+		++req_id;
+		return bus.raise(Boss::Msg::CommandRequest{
+				"clboss-recent-earnings",
+				Jsmn::Object::parse_json(R"JSON( [30] )JSON"),
+				Ln::CommandId::left(req_id)
+			});
+	}).then([&]() {
+		assert(rsp);
+		assert(lastRsp.id == Ln::CommandId::left(req_id));
+		auto result = Jsmn::Object::parse_json(lastRsp.response.output().c_str());
+		auto c = result["recent"][std::string(C)];
+		assert(double(c["in_expenditures"]) == 8000);
+		assert(double(c["in_rebalanced"]) == 8000000);
+		auto b = result["recent"][std::string(B)];
+		assert(double(b["out_expenditures"]) == 7000);
+		assert(double(b["out_rebalanced"]) == 7000000);
+		// No row for the unknown side; the totals are no
+		// longer symmetric.
+		assert(double(result["total"]["in_expenditures"]) == 8000);
+		assert(double(result["total"]["out_expenditures"]) == 7000);
+		assert(double(result["total"]["in_rebalanced"]) == 8000000);
+		assert(double(result["total"]["out_rebalanced"]) == 7000000);
+
+		// And the mirror case: source unknown, destination
+		// booked.
+		return bus.raise(Boss::Msg::XRebalanceAttribution{
+			Ln::NodeId(),		// source unknown
+			B,			// destination
+			Ln::Amount::sat(1000),	// amount_moved
+			Ln::Amount::sat(1)	// fee_spent
+		});
+	}).then([&]() {
+		++req_id;
+		return bus.raise(Boss::Msg::CommandRequest{
+				"clboss-recent-earnings",
+				Jsmn::Object::parse_json(R"JSON( [30] )JSON"),
+				Ln::CommandId::left(req_id)
+			});
+	}).then([&]() {
+		assert(rsp);
+		assert(lastRsp.id == Ln::CommandId::left(req_id));
+		auto result = Jsmn::Object::parse_json(lastRsp.response.output().c_str());
+		auto b = result["recent"][std::string(B)];
+		assert(double(b["out_expenditures"]) == 8000);
+		assert(double(b["out_rebalanced"]) == 8000000);
+		assert(double(result["total"]["in_expenditures"]) == 8000);
+		assert(double(result["total"]["out_expenditures"]) == 8000);
+		return Ev::lift();
+	}).then([&]() {
 		return Ev::lift(0);
 	});
 

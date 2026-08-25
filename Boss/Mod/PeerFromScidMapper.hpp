@@ -9,9 +9,14 @@ namespace Boss { namespace Mod {
 
 /** class Boss::Mod::PeerFromScidMapper
  *
- * @brief Handles `Boss::Msg::RequestePeerFromScid` messages,
+ * @brief Handles `Boss::Msg::RequestPeerFromScid` messages,
  * figuring out the peer node ID from a given SCID, and
  * broadcasts `Boss::Msg::ResponsePeerFromScid` in response.
+ *
+ * The table is rebuilt from each `Boss::Msg::ListpeersResult`
+ * snapshot and extended between snapshots from CLN's
+ * `channel_state_changed` notification, so a channel that just
+ * locked in resolves before its first part or forward.
  */
 class PeerFromScidMapper {
 private:
