@@ -1,5 +1,6 @@
 #include"Boss/Mod/XRebalancer.hpp"
 #include"Boss/Mod/Waiter.hpp"
+#include"Boss/Mod/XRebalanceCensus.hpp"
 #include"Boss/Mod/Rpc.hpp"
 #include"Boss/ModG/RebalanceModeProxy.hpp"
 #include"Boss/ModG/RebalanceUnmanagerProxy.hpp"
@@ -28,7 +29,6 @@
 #include<algorithm>
 #include<cmath>
 #include<ctime>
-#include<limits>
 #include<iomanip>
 #include<map>
 #include<random>
@@ -1176,12 +1176,14 @@ private:
 	}
 
 	/* Log one summary line for the transfer plus part detail.
-	 * The xrebalance reply is flat; parts[] carry status
-	 * strings plus failure geometry (hops_short / erring_scidd /
-	 * failcode), and stragglers show as "pending" (their results
-	 * stream via xrebalance_part notifications).  The label is the
-	 * plugin's request id; logging it links this line to the
-	 * plugin's own "req <id>" lines.  */
+	 * The xrebalance reply is flat; its summary object (or, on
+	 * older plugins, the parts arrays) carries the part counts,
+	 * the failure geometry of the closest miss (hops_short /
+	 * erring_scidd / failcode), and what stragglers still have
+	 * in flight (their results stream via xrebalance_part
+	 * notifications).  The label is the plugin's request id;
+	 * logging it links this line to the plugin's own "req <id>"
+	 * lines.  */
 	Ev::Io<void> log_plugin_result(Jsmn::Object res, double started) {
 		auto num = [&res](char const* k) -> double {
 			if (res.is_object() && res.has(k)) {
@@ -1228,85 +1230,24 @@ private:
 			   << " ppm)";
 			ppm = os.str();
 		}
-		/* Part census, plus the chokepoint: among failed parts,
-		 * the one that got closest to delivery (smallest
-		 * hops_short) is the informative frontier.  Logged only
-		 * when nothing delivered: a completed part IS the
-		 * frontier, and outranks any near-miss.  */
-		auto parts_total = std::size_t(0);
-		auto parts_complete = std::size_t(0);
-		auto parts_pending = std::size_t(0);
-		auto parts_failed = std::size_t(0);
-		auto reason = std::string();
-		auto best_short = std::numeric_limits<double>::max();
-		/* Single-shot responses carry a top-level parts array;
-		 * multi-round responses nest one per round.  Census them
-		 * all: parts_total doubles as how many probes the request
-		 * sent, and the chokepoint spans the whole run.  */
-		auto census = [&](Jsmn::Object parts) {
-			parts_total += parts.size();
-			for (auto i = std::size_t(0); i < parts.size(); ++i) {
-				auto p = parts[i];
-				if (!p.is_object() || !p.has("status")
-				 || !p["status"].is_string())
-					continue;
-				auto st = std::string(p["status"]);
-				if (st == "complete") {
-					++parts_complete;
-					continue;
-				}
-				if (st == "pending") {
-					++parts_pending;
-					continue;
-				}
-				++parts_failed;
-				auto has_short = p.has("hops_short")
-					      && p["hops_short"].is_number();
-				auto hs = has_short
-					? double(p["hops_short"])
-					: std::numeric_limits<double>::max();
-				if (!reason.empty() && hs >= best_short)
-					continue;
-				best_short = hs;
-				auto os = std::ostringstream();
-				os << "; closest failure:";
-				if (has_short)
-					os << " " << std::llround(hs)
-					   << " hops short";
-				if (p.has("erring_scidd")
-				 && p["erring_scidd"].is_string())
-					os << " at "
-					   << std::string(p["erring_scidd"]);
-				if (p.has("failcode")
-				 && p["failcode"].is_number())
-					os << " (failcode 0x" << std::hex
-					   << std::llround(
-						double(p["failcode"]))
-					   << std::dec << ")";
-				reason = os.str();
-			}
-		};
-		if (res.is_object() && res.has("parts")
-		 && res["parts"].is_array())
-			census(res["parts"]);
-		if (res.is_object() && res.has("rounds")
-		 && res["rounds"].is_array()) {
-			auto rounds = res["rounds"];
-			for (auto i = std::size_t(0); i < rounds.size(); ++i) {
-				auto r = rounds[i];
-				if (r.is_object() && r.has("parts")
-				 && r["parts"].is_array())
-					census(r["parts"]);
-			}
-		}
-		if (parts_failed > 1)
-			reason += " [closest of "
-				+ std::to_string(parts_failed) + "]";
+		/* Part census plus the chokepoint, from the plugin's
+		 * summary object (v0.4.4+) or, failing that, the parts
+		 * arrays.  parts_total doubles as how many probes the
+		 * request sent.  */
+		auto census = XRebalanceCensus::from_response(res);
+		auto parts_total = census.parts_total;
+		auto parts_complete = census.parts_complete;
+		auto reason = census.reason;
 		auto pending_note = std::string();
-		if (parts_pending > 0) {
+		if (census.parts_pending > 0) {
 			auto os = std::ostringstream();
-			os << " (" << parts_pending
-			   << " pending, settling in background)";
+			os << " (" << census.parts_pending << " pending";
+			if (census.pending_msat > 0.0)
+				os << ", "
+				   << Util::Str::group_digits(std::int64_t(
+					std::llround(census.pending_msat)))
+				   << " msat";
+			os << ", settling in background)";
 			pending_note = os.str();
 		}
 		auto detail = str("detail");

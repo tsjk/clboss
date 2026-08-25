@@ -128,6 +128,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   flags like the other contrib scripts; its broken import and
   `lookup_alias` call are fixed (it could not run before).
 
+- The `XRebalancer: transfer ...` log line reported `0 part(s)` (or
+  `0/0 parts`), no pending note, and no closest failure with
+  xrebalance plugin v0.4.4 or later, which returns the per-part
+  arrays only on request.  The line now reads the plugin's `summary`
+  object -- part counts, the amount still settling, and the closest
+  miss -- and falls back to the parts arrays for older responses
+  (#338).
+
 ## [0.16.3] - 2026-08-18: "Tougher Than the Race"
 
 ### Security
