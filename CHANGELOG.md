@@ -74,6 +74,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   `contrib/clboss-forwarding-stats --ids` prints full node ids in
   place of aliases.
 
+- A missing `xrebalance` plugin is reported instead of logged away:
+  the first cycle that finds it not loaded logs a warning naming the
+  remedies (fix the plugin, or set `clboss-rebalance-mode=off` to
+  pause deliberately), the warning repeats once an hour while the
+  plugin stays missing, the cycles in between log at debug, and the
+  first cycle it answers again logs that it is back.  `clboss-status`
+  gains an `xrebalancer` entry: the plugin state (`unknown`,
+  `present`, `absent`), the time of its last answer, the count of
+  consecutive failed calls, and the last error.  Before, each such
+  cycle logged one info line and nothing else pointed at the cause.
+
 ### Changed
 
 - **BREAKING**: CLBOSS now requires **Core Lightning v25.09 or

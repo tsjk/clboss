@@ -12,6 +12,8 @@
 #include"Boss/Msg/ManifestOption.hpp"
 #include"Boss/Msg/Option.hpp"
 #include"Boss/Msg/OptionType.hpp"
+#include"Boss/Msg/ProvideStatus.hpp"
+#include"Boss/Msg/SolicitStatus.hpp"
 #include"Boss/RebalanceMode.hpp"
 #include"Boss/concurrent.hpp"
 #include"Boss/log.hpp"
@@ -25,10 +27,13 @@
 #include"S/Bus.hpp"
 #include"Sqlite3.hpp"
 #include"Util/Str.hpp"
+#include"Util/date.hpp"
 #include"Util/make_unique.hpp"
 #include<algorithm>
+#include<cctype>
 #include<cmath>
 #include<ctime>
+#include<functional>
 #include<iomanip>
 #include<map>
 #include<random>
@@ -72,6 +77,20 @@ auto constexpr default_gain = double(1.0);
 
 auto constexpr paused_poll_secs = double(60.0);
 
+/* A missing plugin is warned about on the first cycle that finds it
+ * missing and again this often while it stays missing; the cycles
+ * in between log at debug.  */
+auto constexpr absent_warn_interval_secs = double(3600.0);
+
+/* lightningd answers a call to an unregistered command with
+ * "Unknown command '<name>'" (JSONRPC2_METHOD_NOT_FOUND).  */
+bool is_unknown_command(std::string const& msg) {
+	auto lower = msg;
+	for (auto& c : lower)
+		c = char(std::tolower((unsigned char) c));
+	return lower.find("unknown command") != std::string::npos;
+}
+
 }
 
 namespace Boss { namespace Mod {
@@ -102,6 +121,19 @@ private:
 	 * queue.  Both cycle paths clear it behind a catch-all, so an
 	 * exception cannot leave it wedged.  */
 	bool in_flight;
+
+	/* Plugin health, from the outcome of each `xrebalance` call:
+	 * drives the not-loaded warning and the `xrebalancer` key of
+	 * clboss-status.  get_now is the clock for the timestamps and
+	 * the warning's hourly repeat.  */
+	std::function<double()> get_now;
+	enum class PluginState { Unknown, Present, Absent };
+	PluginState plugin_state;
+	double last_response;           /* get_now() of the last answer; <0 = none */
+	std::size_t consecutive_failures;
+	std::string last_error;         /* message of the last failure; empty = none */
+	std::size_t absent_cycles;      /* consecutive cycles that found it missing */
+	double last_absent_warn;        /* get_now() of the last not-loaded Warn */
 
 	/* One row per CHANNELD_NORMAL channel, built live from
 	 * listpeerchannels each cycle (balances and online status must be
@@ -135,6 +167,12 @@ private:
 		gain = default_gain;
 		started = false;
 		in_flight = false;
+		plugin_state = PluginState::Unknown;
+		last_response = -1.0;
+		consecutive_failures = 0;
+		last_error = std::string();
+		absent_cycles = 0;
+		last_absent_warn = -1.0;
 
 		bus.subscribe<Msg::DbResource
 			     >([this](Msg::DbResource const& m) {
@@ -201,6 +239,13 @@ private:
 		bus.subscribe<Msg::DemandObserved
 			     >([this](Msg::DemandObserved const& m) {
 			return handle_demand(m);
+		});
+
+		bus.subscribe<Msg::SolicitStatus
+			     >([this](Msg::SolicitStatus const& _) {
+			return bus.raise(Msg::ProvideStatus{
+				"xrebalancer", plugin_status()
+			});
 		});
 
 		bus.subscribe<Msg::Init
@@ -1146,20 +1191,105 @@ private:
 		auto started = Ev::now();
 		return rpc.command("xrebalance", std::move(parms))
 		.then([this, started](Jsmn::Object res) {
-			return log_plugin_result(std::move(res), started);
+			return plugin_answered().then([this, res, started]() {
+				return log_plugin_result(res, started);
+			});
 		}).catching<RpcError>([this](RpcError const& e) {
-			/* Also the plugin-not-loaded case ("Unknown
-			 * command"): one clean line per cycle, retried
-			 * next cycle.  */
-			return Boss::log( bus, Info
-				, "XRebalancer: xrebalance plugin did not "
-				  "execute: %s"
-				, rpc_error_summary(e).c_str() );
+			return plugin_refused(rpc_error_summary(e));
 		}).catching<std::exception>([this](std::exception const& e) {
+			++consecutive_failures;
+			last_error = e.what();
 			return Boss::log( bus, Warn
 				, "XRebalancer: xrebalance plugin error: %s"
 				, e.what() );
 		});
+	}
+
+	/* The plugin answered (however the transfer went): note the
+	 * time, clear the failure state, and say so if the previous
+	 * cycles found it missing.  */
+	Ev::Io<void> plugin_answered() {
+		auto act = Ev::lift();
+		if (absent_cycles > 0)
+			act += Boss::log( bus, Info
+					, "XRebalancer: xrebalance plugin "
+					  "back after %zu absent cycle(s)."
+					, absent_cycles );
+		plugin_state = PluginState::Present;
+		last_response = get_now();
+		consecutive_failures = 0;
+		last_error.clear();
+		absent_cycles = 0;
+		last_absent_warn = -1.0;
+		return act;
+	}
+
+	/* lightningd returned an error for the call.  "Unknown
+	 * command" means the plugin is not loaded: warn on the first
+	 * such cycle and hourly after that, debug in between, and
+	 * retry every cycle -- the operator fixes the plugin or sets
+	 * the mode off; nothing here changes the mode.  Any other
+	 * error came from the plugin itself: one line per cycle.  */
+	Ev::Io<void> plugin_refused(std::string msg) {
+		++consecutive_failures;
+		last_error = msg;
+		if (!is_unknown_command(msg)) {
+			plugin_state = PluginState::Present;
+			return Boss::log( bus, Info
+				, "XRebalancer: xrebalance plugin did not "
+				  "execute: %s"
+				, msg.c_str() );
+		}
+		plugin_state = PluginState::Absent;
+		++absent_cycles;
+		auto now = get_now();
+		if ( absent_cycles == 1
+		  || now - last_absent_warn >= absent_warn_interval_secs
+		   ) {
+			last_absent_warn = now;
+			return Boss::log( bus, Warn
+				, "XRebalancer: xrebalance plugin not loaded "
+				  "(%s); rebalancing is paused until it is.  "
+				  "Fix the plugin (see README) or set "
+				  "clboss-rebalance-mode=off to pause "
+				  "deliberately."
+				, msg.c_str() );
+		}
+		return Boss::log( bus, Debug
+			, "XRebalancer: xrebalance plugin still not loaded "
+			  "(%s), %zu cycle(s) so far."
+			, msg.c_str(), absent_cycles );
+	}
+
+	/* The `xrebalancer` entry of clboss-status.  */
+	Json::Out plugin_status() const {
+		auto state = std::string();
+		switch (plugin_state) {
+		case PluginState::Unknown: state = "unknown"; break;
+		case PluginState::Present: state = "present"; break;
+		case PluginState::Absent: state = "absent"; break;
+		}
+		auto out = Json::Out();
+		auto obj = out.start_object();
+		obj.field("plugin", state);
+		/* Whole seconds: the JSON double writer keeps too few
+		 * digits for an epoch time.  */
+		if (last_response >= 0.0)
+			obj.field( "last_response"
+				 , std::uint64_t(std::llround(last_response)) )
+			   .field( "last_response_human"
+				 , Util::date(last_response) );
+		else
+			obj.field("last_response", nullptr)
+			   .field("last_response_human", nullptr);
+		obj.field( "consecutive_failures"
+			 , std::uint64_t(consecutive_failures) );
+		if (last_error.empty())
+			obj.field("last_error", nullptr);
+		else
+			obj.field("last_error", last_error);
+		obj.end_object();
+		return out;
 	}
 
 	/* One-line summary of an RpcError's JSON-RPC message, with the
@@ -1323,9 +1453,11 @@ public:
 	Impl(Impl const&) =delete;
 
 	explicit
-	Impl(S::Bus& bus_, Waiter& waiter_)
-		: bus(bus_), waiter(waiter_), mode_proxy(bus_), rpc(bus_)
-		, unmanager(bus_) {
+	Impl( S::Bus& bus_
+	    , Waiter& waiter_
+	    , std::function<double()> get_now_
+	    ) : bus(bus_), waiter(waiter_), mode_proxy(bus_), rpc(bus_)
+	      , unmanager(bus_), get_now(std::move(get_now_)) {
 		start();
 	}
 };
@@ -1333,7 +1465,10 @@ public:
 XRebalancer::XRebalancer(XRebalancer&&) =default;
 XRebalancer::~XRebalancer() =default;
 
-XRebalancer::XRebalancer(S::Bus& bus, Boss::Mod::Waiter& waiter)
-	: pimpl(Util::make_unique<Impl>(bus, waiter)) { }
+XRebalancer::XRebalancer( S::Bus& bus
+			, Boss::Mod::Waiter& waiter
+			, std::function<double()> get_now
+			)
+	: pimpl(Util::make_unique<Impl>(bus, waiter, std::move(get_now))) { }
 
 }}
