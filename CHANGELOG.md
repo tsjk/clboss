@@ -136,6 +136,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   miss -- and falls back to the parts arrays for older responses
   (#338).
 
+- Rebalance parts and forwards through a channel younger than the
+  last ten-minute `listpeerchannels` snapshot went unattributed: the
+  scid-to-peer table did not know the channel yet, and an unknown
+  end dropped the whole part.  The table now learns a channel from
+  CLN's `channel_state_changed` notification as soon as it carries a
+  short channel id, and a part with one end still unknown is
+  attributed to the end that is known (#337).
+
 ## [0.16.3] - 2026-08-18: "Tougher Than the Race"
 
 ### Security

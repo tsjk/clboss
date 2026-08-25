@@ -408,37 +408,42 @@ private:
 		    [this, source, destination, fee, amount]
 		    (Sqlite3::Tx tx) {
 			auto bucket = bucket_time(get_now());
-			ensure(tx, source, bucket);
-			ensure(tx, destination, bucket);
-
-			tx.query(R"QRY(
-			UPDATE "EarningsTracker"
-			   SET in_expenditures = in_expenditures + :fee,
-			       in_rebalanced = in_rebalanced + :amount
-			 WHERE node = :node
-			   AND time_bucket = :bucket
-			     ;
-			)QRY")
-				.bind(":node", std::string(source))
-				.bind(":bucket", bucket)
-				.bind(":fee", fee.to_msat())
-				.bind(":amount", amount.to_msat())
-				.execute()
-				;
-			tx.query(R"QRY(
-			UPDATE "EarningsTracker"
-			   SET out_expenditures = out_expenditures + :fee,
-			       out_rebalanced = out_rebalanced + :amount
-			 WHERE node = :node
-			   AND time_bucket = :bucket
-			     ;
-			)QRY")
-				.bind(":node", std::string(destination))
-				.bind(":bucket", bucket)
-				.bind(":fee", fee.to_msat())
-				.bind(":amount", amount.to_msat())
-				.execute()
-				;
+			/* A null peer is a side the part monitor could
+			 * not resolve; only the known side is booked.  */
+			if (source) {
+				ensure(tx, source, bucket);
+				tx.query(R"QRY(
+				UPDATE "EarningsTracker"
+				   SET in_expenditures = in_expenditures + :fee,
+				       in_rebalanced = in_rebalanced + :amount
+				 WHERE node = :node
+				   AND time_bucket = :bucket
+				     ;
+				)QRY")
+					.bind(":node", std::string(source))
+					.bind(":bucket", bucket)
+					.bind(":fee", fee.to_msat())
+					.bind(":amount", amount.to_msat())
+					.execute()
+					;
+			}
+			if (destination) {
+				ensure(tx, destination, bucket);
+				tx.query(R"QRY(
+				UPDATE "EarningsTracker"
+				   SET out_expenditures = out_expenditures + :fee,
+				       out_rebalanced = out_rebalanced + :amount
+				 WHERE node = :node
+				   AND time_bucket = :bucket
+				     ;
+				)QRY")
+					.bind(":node", std::string(destination))
+					.bind(":bucket", bucket)
+					.bind(":fee", fee.to_msat())
+					.bind(":amount", amount.to_msat())
+					.execute()
+					;
+			}
 			tx.commit();
 			return Ev::lift();
 		});
