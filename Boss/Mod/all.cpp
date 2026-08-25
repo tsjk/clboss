@@ -23,22 +23,19 @@
 #include"Boss/Mod/ConnectFinderByHardcode.hpp"
 #include"Boss/Mod/Connector.hpp"
 #include"Boss/Mod/CommandReceiver.hpp"
+#include"Boss/Mod/DemandTracker.hpp"
 #include"Boss/Mod/Dowser.hpp"
-#include"Boss/Mod/EarningsRebalancer.hpp"
 #include"Boss/Mod/EarningsTracker.hpp"
 #include"Boss/Mod/FeeModderByBalance.hpp"
 #include"Boss/Mod/FeeMonitor.hpp"
 #include"Boss/Mod/FeeModderByPriceTheory.hpp"
 #include"Boss/Mod/FeeModderBySize.hpp"
 #include"Boss/Mod/ForwardFeeMonitor.hpp"
-#include"Boss/Mod/FundsMover/Main.hpp"
 #include"Boss/Mod/HtlcAcceptor.hpp"
 #include"Boss/Mod/InitialConnect.hpp"
-#include"Boss/Mod/InitialRebalancer.hpp"
 #include"Boss/Mod/Initiator.hpp"
 #include"Boss/Mod/InternetConnectionMonitor.hpp"
 #include"Boss/Mod/InvoicePayer.hpp"
-#include"Boss/Mod/JitRebalancer.hpp"
 #include"Boss/Mod/JsonOutputter.hpp"
 #include"Boss/Mod/ListfundsAnalyzer.hpp"
 #include"Boss/Mod/ListfundsAnnouncer.hpp"
@@ -46,7 +43,6 @@
 #include"Boss/Mod/ListpeersAnalyzer.hpp"
 #include"Boss/Mod/ListpeersAnnouncer.hpp"
 #include"Boss/Mod/Manifester.hpp"
-#include"Boss/Mod/MoveFundsCommand.hpp"
 #include"Boss/Mod/NeedsConnectSolicitor.hpp"
 #include"Boss/Mod/NeedsOnchainFundsSwapper.hpp"
 #include"Boss/Mod/NewaddrHandler.hpp"
@@ -60,12 +56,15 @@
 #include"Boss/Mod/PeerFromScidMapper.hpp"
 #include"Boss/Mod/PeerMetrician.hpp"
 #include"Boss/Mod/PeerStatistician.hpp"
+#include"Boss/Mod/PeerTrackRecord.hpp"
+#include"Boss/Mod/RebalanceModeManager.hpp"
 #include"Boss/Mod/RebalanceUnmanager.hpp"
 #include"Boss/Mod/Reconnector.hpp"
 #include"Boss/Mod/RegularActiveProbe.hpp"
 #include"Boss/Mod/RpcWrapper.hpp"
 #include"Boss/Mod/SelfUptimeMonitor.hpp"
 #include"Boss/Mod/SendpayResultMonitor.hpp"
+#include"Boss/Mod/SetConfigHandler.hpp"
 #include"Boss/Mod/StatusCommand.hpp"
 #include"Boss/Mod/SwapManager.hpp"
 #include"Boss/Mod/SwapReporter.hpp"
@@ -73,6 +72,8 @@
 #include"Boss/Mod/Timers.hpp"
 #include"Boss/Mod/UnmanagedManager.hpp"
 #include"Boss/Mod/Waiter.hpp"
+#include"Boss/Mod/XRebalancePartMonitor.hpp"
+#include"Boss/Mod/XRebalancer.hpp"
 #include"Boss/Mod/all.hpp"
 #include<vector>
 
@@ -119,6 +120,7 @@ std::shared_ptr<void> all( std::ostream& cout
 	/* Startup.  */
 	all->install<Manifester>(bus);
 	all->install<Initiator>(bus, threadpool, std::move(open_rpc_socket));
+	all->install<SetConfigHandler>(bus);
 
 	/* General settings.  */
 	all->install<AmountSettingsHandler>(bus);
@@ -158,6 +160,7 @@ std::shared_ptr<void> all( std::ostream& cout
 	auto investigator = all->install< ChannelCandidateInvestigator::Main
 					>(bus, *imon);
 	all->install<ChannelCreationDecider>(bus);
+	all->install<PeerTrackRecord>(bus);
 	all->install<ChannelCreator::Main>(bus, *waiter, *investigator);
 	all->install<ChannelCandidateMatchmaker>(bus);
 	all->install<Dowser>(bus);
@@ -205,14 +208,11 @@ std::shared_ptr<void> all( std::ostream& cout
 #endif /* ENABLE_COMPLAINER_BY_LOW_SUCCESS_PER_DAY */
 
 	/* Channel balancing.  */
-	all->install<FundsMover::Main>(bus);
-	all->install<MoveFundsCommand>(bus);
+	all->install<RebalanceModeManager>(bus);
+	all->install<XRebalancer>(bus, *waiter);
+	all->install<XRebalancePartMonitor>(bus);
+	all->install<DemandTracker>(bus);
 	all->install<EarningsTracker>(bus);
-	all->install<JitRebalancer>(bus);
-#ifdef ENABLE_INITIAL_REBALANCER
-	all->install<InitialRebalancer>(bus);
-#endif /* ENABLE_INITIAL_REBALANCER */
-	all->install<EarningsRebalancer>(bus);
 	all->install<RebalanceUnmanager>(bus);
 
 	/* Unmanaged nodes.  */

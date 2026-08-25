@@ -3,8 +3,7 @@
 #include"Boss/Mod/EarningsTracker.hpp"
 #include"Boss/Msg/DbResource.hpp"
 #include"Boss/Msg/ForwardFee.hpp"
-#include"Boss/Msg/RequestMoveFunds.hpp"
-#include"Boss/Msg/ResponseMoveFunds.hpp"
+#include"Boss/Msg/XRebalanceAttribution.hpp"
 #include"Boss/Msg/CommandResponse.hpp"
 #include"Boss/Msg/CommandRequest.hpp"
 #include"Ev/start.hpp"
@@ -48,29 +47,20 @@ Ev::Io<void> raiseForwardFeeLoop(S::Bus& bus, int count) {
 		});
 }
 
-Ev::Io<void> raiseMoveFundsLoop(S::Bus& bus, int count) {
+Ev::Io<void> raiseAttributionLoop(S::Bus& bus, int count) {
 	if (count == 0) {
 		return Ev::lift();
 	}
 	return bus.raise(
-		Boss::Msg::RequestMoveFunds{
-			nullptr,        	// requester (match ResponseMoveFunds)
+		Boss::Msg::XRebalanceAttribution{
 			C,              	// source
 			A,              	// destination
-			Ln::Amount::sat(1000),  // amount
-			Ln::Amount::sat(3)      // fee_budget
-		})
-		.then([&bus]() {
-			return bus.raise(
-				Boss::Msg::ResponseMoveFunds{
-					nullptr,        	// requester (see RequestMoveFunds)
-					Ln::Amount::sat(1000),  // amount_moved
-					Ln::Amount::sat(1)      // fee_spent
-				});
+			Ln::Amount::sat(1000),  // amount_moved
+			Ln::Amount::sat(1)      // fee_spent
 		})
 		.then([&bus, count]() {
 			mock_now += 24 * 60 * 60; // advance one day
-			return raiseMoveFundsLoop(bus, count - 1);
+			return raiseAttributionLoop(bus, count - 1);
 		});
 }
 
@@ -101,7 +91,7 @@ int main() {
 	}).then([&]() {
 		// Rewind 1 week and add 7 days of one rebalance per day
 		mock_now -= (7 * 24 * 60 * 60);
-		return raiseMoveFundsLoop(bus, 7);
+		return raiseAttributionLoop(bus, 7);
 	}).then([&]() {
 		// Check history for all peers
 		++req_id;

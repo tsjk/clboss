@@ -30,7 +30,7 @@ So far CLBOSS can do the following automatically:
 
 * Open channels to other, useful nodes when fees are low and there are onchain funds
 * Acquire incoming capacity via `boltz.exchange` swaps.
-* Rebalance open channels by self-payment (including JIT rebalancer).
+* Rebalance open channels, via the external `xrebalance` plugin.
 * Set forwarding fees so that they're competitive to other nodes
 
 You can read more information about CLBOSS here:
@@ -49,7 +49,7 @@ All history and prior contributions remain credited to their original authors.
 Dependencies
 ------------
 
-If you are installing from some official [source release tarball](https://github.com/ZmnSCPxj/clboss/releases),
+If you are installing from some official [source release tarball](https://github.com/ksedgwic/clboss/releases),
 you only need the below packages installed.
 
 Debian-derived systems:
@@ -101,7 +101,27 @@ further.
 Installing
 ----------
 
-From an [official source release](https://github.com/ZmnSCPxj/clboss/releases), just:
+### Requirements
+
+CLBOSS supports **Core Lightning v26.04 or later**; that is the
+oldest release it is tested against.  Its probing subsystems build
+routes from the `getroutes` per-hop out-side fields (`node_id_out` /
+`amount_out_msat` / `cltv_out`): on v26.06 and later these are read
+directly, and on older versions they are derived from the deprecated
+per-hop fields, which carry the same values one hop over.
+
+At startup CLBOSS checks the CLN version.  From v25.09 up to v26.04
+it starts with a warning that the version is untested.  Older than
+v25.09 it refuses to run — before creating or modifying any on-disk
+state — because `getroutes` gained the `maxparts` parameter in
+v25.09 and CLBOSS passes it on every call, so probing, dowsing, and
+candidate matchmaking would all fail.  If (and only if) your older
+CLN carries backports of what CLBOSS needs (askrene `getroutes` with
+`maxparts`, `xpay`), you can bypass the refusal with
+`--clboss-skip-cln-version-check`.  Users on older CLN releases
+should stay on CLBOSS 0.16.x.
+
+From an [official source release](https://github.com/ksedgwic/clboss/releases), just:
 
     ./configure && make
     sudo make install # or su first, then make install
@@ -151,6 +171,42 @@ Then run the `./configure && make && sudo make install`.
 You can then add a `plugin=/path/to/clboss` or
 `important-plugin=/path/to/clboss` setting to your Core Lightning
 configuration file.
+
+### The xrebalance plugin
+
+Rebalancing runs through the external `xrebalance` plugin
+(<https://github.com/ksedgwic/xrebalance>), a separate Core Lightning
+plugin written in Rust.  CLBOSS needs **v0.4.5 or later**.  Without
+it CLBOSS starts and runs everything else, but no rebalancing
+happens: the first cycle that finds the plugin missing logs a
+warning (`UNUSUAL` in the `lightningd` log), the warning repeats
+once an hour while the plugin stays missing, and every cycle retries,
+so a plugin loaded later is picked up on the next cycle.  The
+remedies are to fix the plugin (path, build, version), or to set
+`clboss-rebalance-mode=off` if the pause is deliberate; CLBOSS never
+changes the mode on its own.  `clboss-status` shows the plugin's
+state under `xrebalancer`: `plugin` (`unknown` before the first
+cycle, `present`, or `absent`), the time of its last answer, the
+count of consecutive failed calls, and the last error.
+
+Build it with a [rustup](https://rustup.rs) toolchain:
+
+    git clone https://github.com/ksedgwic/xrebalance.git
+    cd xrebalance
+    cargo build --release      # binary: target/release/xrebalance
+    ./install-versioned.sh     # versioned copy + symlink in /usr/local/bin
+
+Then load it alongside CLBOSS in the Core Lightning configuration,
+in either order:
+
+    plugin=/usr/local/bin/xrebalance
+    plugin=/usr/local/bin/clboss
+
+The plugin can also be started while `lightningd` runs
+(`lightning-cli plugin start /usr/local/bin/xrebalance`); CLBOSS
+picks it up at the next cycle.  The plugin's own `xrebalance-*`
+options are documented in its README; CLBOSS's rebalancing options
+are the `clboss-xrebalance-*` entries under Operating below.
 
 ### FreeBSD
 
@@ -454,6 +510,11 @@ To resume full management of the node, give an empty string:
 
     lightning-cli clboss-unmanage ${NODEID} ""
 
+`clboss-unmanage` logs nothing.  To see the current tags, read
+them back from the status output:
+
+    lightning-cli clboss-status | jq .unmanaged
+
 The possible unmanagement tags are:
 
 * `lnfee` - Do not manage the channel fee of channels to this
@@ -554,17 +615,81 @@ The defaults are:
 * Minimum: 500000sats = 5mBTC
 * Maximum: 16777215sats = 167.77215mBTC
 
+The channel-creation planner requires
+`max-channel >= 3 * min-channel + 20000`.
+If the configured pair violates this, CLBOSS keeps the
+maximum and lowers the minimum to the largest value that
+fits, logging a warning.
+
 Specify the value in satoshis without adding any unit
 suffix, e.g.
 
     lightningd --clboss-min-channel=1000000
 
-### `--clboss-max-rebalance-fee-ppm=<ppm>`
+### `--clboss-rebalance-mode=<xrebalance|off>`
 
-Limits the fee CLBOSS will pay for a single internal rebalance.
-The value is in parts-per-million (PPM) of the amount being moved.
-The default is `1000` (0.1% of the amount). Both the
-JitRebalancer and EarningsRebalancer honor this limit.
+Selects how CLBOSS rebalances channel liquidity:
+
+* `xrebalance` (default): the circular askrene rebalancer, executing
+  through the external `xrebalance` plugin, which must be loaded into
+  `lightningd`.  Without the plugin, CLBOSS warns and idles (see
+  "The xrebalance plugin" under Installing).
+* `off`: disable autonomous rebalancing entirely.
+
+The `xrebalance` plugin is a separate CLN plugin; see "The xrebalance
+plugin" under Installing for the version CLBOSS needs and how to
+build and load it.
+
+Rebalance cycles run on a Poisson clock (`clboss-xrebalance-per-hour`
+below) and are additionally triggered on demand, when an observed
+forward drains a channel that is low on local liquidity.
+
+This is a *dynamic* option: set it in the `lightningd` config for the
+startup default, or change it at runtime without a restart with
+
+    lightning-cli setconfig clboss-rebalance-mode <mode>
+
+### `--clboss-xrebalance-*` tuning options
+
+Each xrebalance cycle selects fill candidates (channels low on local
+liquidity) and drain candidates (channels high on it), admits and
+sizes them from each peer's windowed net earnings, matches them into
+one min-cost-flow transfer, and prices that transfer from what the
+involved peers actually earn — so rebalancing never spends more on a
+corridor than the corridor's own track record justifies.
+
+All of the following are *dynamic* (`setconfig`) options:
+
+* `clboss-xrebalance-per-hour` — average matched-cycle rate, Poisson
+  paced; `0` pauses the matched loop (demand-triggered cycles still
+  run).  Default `12`.
+* `clboss-xrebalance-route-cost-floor` — the ppm floor at which the
+  matched pool stops growing; also sets the cycle's amount and fee
+  budget.  `auto` derives a ladder of floors and sweeps a random rung
+  each cycle.  Default `auto`.
+* `clboss-xrebalance-earnings-window-days` — trailing window over
+  which per-peer net earnings rates are measured.  Default `90`.
+* `clboss-xrebalance-fill-loc` / `clboss-xrebalance-drain-loc` — the
+  band edges, in percent of local liquidity: channels at or below
+  `fill-loc` are fill candidates, at or above `drain-loc` are drain
+  candidates, and each transfer aims the channel back at its band
+  edge.  Defaults `25` and `75`.
+* `clboss-xrebalance-maxparts` — how many parts (paths) the
+  min-cost-flow solve may split a transfer into.  Lower means fewer,
+  fatter parts; higher means finer splitting and more learning but
+  more refusals.  Default `80`.  Each `getroutes` call grows with
+  it, so `lightningd`'s `askrene-timeout` may need raising along
+  with it; for example, 30 seconds has been enough with the
+  default.
+* `clboss-xrebalance-grant` — assumed prior earnings rate (ppm),
+  credited to every channeled peer as if already earned on one
+  capacity-turn of volume; admits peers with no track record at that
+  rate, and real volume dilutes the credit toward the measured rate.
+  Default `0` (record-only).
+* `clboss-xrebalance-gain` — multiplier on the measured earnings
+  rates before candidacy and pricing; above `1` accepts routes
+  costing up to gain times the measured rate.  Default `1` (strict).
+
 ### `--clboss-min-nodes-to-process=<number>`
 
 Sets the minimum number of nodes that CLBOSS must know about before it
@@ -579,6 +704,55 @@ The defaults depend on the network:
 
 Setting the option to `-1` reverts to the built-in network-specific
 default.
+
+### `--clboss-candidate-record-window-days=<days>`, `--clboss-candidate-keeper-tral-bps=<bps>`, `--clboss-candidate-min-record-days=<days>`, `--clboss-candidate-prefer-spliceable=<true|false>`
+
+When CLBOSS selects which investigated candidates to actually open
+channels to, it partitions them by their earnings *track record*: what
+a previous (now closed) channel with that node earned for us, net of
+rebalance costs.  Candidates with a proven good record ("keepers") are
+funded first, candidates with no usable history next, and candidates
+with a poor record are used only when no better candidate can absorb
+the available funds.  Within the no-history tier, nodes announcing
+splicing support are preferred, since their channels can be resized
+later without a close+reopen.
+
+The judgment metric is TRAL — annualized net return on liquidity, in
+basis points — the same metric reported by the
+`contrib/clboss-forwarding-stats` tool.  It is computed over a sliding
+window from the daily earnings buckets and the (roughly hourly) fee
+monitor records, counting only the days a channel actually operated
+within the window, so partially-overlapping or mid-window-closed
+channels are annualized fairly.
+
+* `clboss-candidate-record-window-days` — how many days of history to
+  consider.  Default `180`.
+* `clboss-candidate-keeper-tral-bps` — TRAL at or above which a
+  candidate's record marks it a keeper.  Default `50` (0.5%/year).
+* `clboss-candidate-min-record-days` — minimum observed operational
+  days within the window before the record is trusted; below this the
+  candidate is treated as having no record.  Default `7`.
+* `clboss-candidate-prefer-spliceable` — whether the no-history tier
+  is ordered with splicing-capable nodes first.  Default `true`.
+
+All four are *dynamic* options: set them in the `lightningd` config
+for the startup default, or change them at runtime without a restart
+with
+
+    lightning-cli setconfig clboss-candidate-keeper-tral-bps <bps>
+
+### `clboss-track-record`
+
+Shows the earnings track record and verdict for a single node, exactly
+as the channel-open candidate selection would judge it:
+
+    lightning-cli clboss-track-record nodeid=<nodeid>
+
+The output includes the verdict (`keeper`, `no-record`, or
+`underperformer`), the computed `tral_bps`, the observed operational
+days, the net earnings in the window, and the current values of the
+three `clboss-candidate-*` options above — handy when tuning them at
+runtime with `setconfig`.
 
 ### `clboss-recent-earnings`, `clboss-earnings-history`
 

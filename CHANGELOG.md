@@ -4,6 +4,176 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Upgrading from 0.16.x
+
+- Core Lightning **v26.04 or later** (v25.09 is the hard floor; see
+  Changed below).
+- Install the [`xrebalance`](https://github.com/ksedgwic/xrebalance)
+  plugin, **v0.4.5 or later**, and load it alongside CLBOSS -- see
+  "The xrebalance plugin" under Installing in the README.  Without it
+  CLBOSS runs everything except rebalancing.
+- Remove `clboss-max-rebalance-fee-ppm` from your configuration;
+  `lightningd` refuses to start on an unknown option.
+- If you ran a development build from between 0.16.x and this
+  release, remove the persistent `askrene` layers it created,
+  `clboss` and `clboss-xrebalance`.  This release uses only the
+  `clboss-self` layer, and the old layers' node disables and channel
+  updates never age out (`askrene-age` trims only constraints and
+  biases), so `lightningd` would keep them indefinitely.  They only
+  affect routes CLBOSS asks for itself, so removing them is safe at
+  any time:
+
+      lightning-cli askrene-remove-layer clboss
+      lightning-cli askrene-remove-layer clboss-xrebalance
+
+  `lightning-cli askrene-listlayers` shows which layers exist.
+  Release builds of 0.16.x created no layers.
+- Nothing else to set: the new options need no settings to start,
+  and their defaults are the values run on live nodes.
+
+### Added
+
+- A new rebalancer, **xrebalance**: circular rebalances planned from
+  each peer's earnings record and executed through the external
+  [`xrebalance`](https://github.com/ksedgwic/xrebalance) plugin on
+  CLN's `askrene` min-cost-flow router.  Cycles run on a Poisson
+  clock and are also triggered on demand when a forward drains a
+  channel.  Pricing is strict by default: a cycle's fee budget
+  derives from what the involved peers actually earn, tunable with
+  the `clboss-xrebalance-*` options (see README).  Select with
+  `clboss-rebalance-mode=<xrebalance|off>`; without the plugin
+  loaded, CLBOSS idles with a log hint.
+
+- Channel-open candidates are now ranked by their earnings **track
+  record**: nodes whose previous channels earned well ("keepers")
+  are funded first, unknowns next, proven underperformers last;
+  within the no-record tier, peers advertising splicing are
+  preferred (opt out with
+  `clboss-candidate-prefer-spliceable=false`).  The new
+  `clboss-track-record` command shows the verdict for any node, and
+  the `clboss-candidate-*` options tune the judgment.
+
+- Many options are now **dynamic**: settable at runtime with
+  `lightning-cli setconfig`, no restart needed.  Each option's README
+  entry says whether it is dynamic.  Invalid setconfig values are
+  rejected with a proper error instead of being silently ignored.
+
+- `contrib/clboss-xrebalance-view` shows the rebalancer's view of the
+  node: each channel's band and its peer's net earnings rates, the
+  fill and drain pools, the derived floor ladder, and the `xrebalance`
+  request the widest cycle would send, as a dry-run command line.
+  `contrib/cln-plugin-bounce` restarts named dynamic plugins in
+  dependency order and picks up config-file edits; it applies the
+  edits only after checking, against the restarted plugins, that
+  every config-file option is still registered, since an option a
+  new build dropped leaves `lightningd` holding a stale configvar
+  that makes any optioned `plugin start` or `setconfig` crash it
+  until it restarts.
+  `contrib/clboss-forwarding-stats --ids` prints full node ids in
+  place of aliases.
+
+- A missing `xrebalance` plugin is reported instead of logged away:
+  the first cycle that finds it not loaded logs a warning naming the
+  remedies (fix the plugin, or set `clboss-rebalance-mode=off` to
+  pause deliberately), the warning repeats once an hour while the
+  plugin stays missing, the cycles in between log at debug, and the
+  first cycle it answers again logs that it is back.  `clboss-status`
+  gains an `xrebalancer` entry: the plugin state (`unknown`,
+  `present`, `absent`), the time of its last answer, the count of
+  consecutive failed calls, and the last error.  Before, each such
+  cycle logged one info line and nothing else pointed at the cause.
+
+### Changed
+
+- **BREAKING**: CLBOSS now requires **Core Lightning v25.09 or
+  later**, and **v26.04 or later** is the tested floor.  The probing
+  subsystems build routes from the `getroutes` per-hop out-side
+  fields (`node_id_out` / `amount_out_msat` / `cltv_out`): on v26.06
+  and later these are read directly, and on older versions they are
+  derived from the deprecated per-hop fields, which carry the same
+  values one hop over.  At startup, CLN older than v25.09 is refused
+  before any on-disk state is created or modified, because
+  `getroutes` gained `maxparts` in v25.09 and CLBOSS passes it on
+  every call (note: with `important-plugin`, a refused start stops
+  lightningd itself); versions from v25.09 up to v26.04 start with a
+  warning that the version is untested.  Operators running an older
+  CLN that carries backports of what CLBOSS needs (askrene
+  `getroutes` with `maxparts`, `xpay`) can bypass the refusal with
+  `--clboss-skip-cln-version-check`.  Users on older CLN releases
+  should stay on CLBOSS 0.16.x, which uses the legacy
+  `getroute`/`pay` APIs that older CLN still provides.
+
+- Channel-candidate capacity probing (the Dowser) is one `askrene`
+  `getroutes` flow estimate, replacing the loop of `getroute` and
+  `listchannels` calls.  The estimate is capped at
+  `clboss-max-channel`, the largest channel CLBOSS would open; sizing
+  between `clboss-min-channel` and `clboss-max-channel` is otherwise
+  unchanged.
+
+- Swap-out invoices are paid with `xpay` instead of the deprecated
+  `pay`.  The fee cap stays at 0.5% of the amount, passed as an
+  absolute `maxfee`.
+
+- Probes exclude our own node through a persistent `askrene` layer
+  named `clboss-self`, which holds only our node id; it shows in
+  `askrene-listlayers` and needs no maintenance.
+
+### Removed
+
+- **BREAKING**: the built-in rebalancer (`JitRebalancer`,
+  `EarningsRebalancer`, `InitialRebalancer`, `FundsMover`), the
+  manual `clboss-movefunds` command, and the
+  `clboss-earnings-rebalancer` debug trigger.  Rebalancing is now
+  done by the xrebalance engine, selected with the new
+  `clboss-rebalance-mode` option.  The `clboss-max-rebalance-fee-ppm` option is removed with
+  it; configs still setting it must drop it or `lightningd` will
+  refuse to start.
+  JIT (just-in-time) rebalancing is removed deliberately: holding an
+  incoming HTLC while a rebalance runs delays the whole payment path.
+  The demand it served is covered by demand-triggered rebalance
+  cycles, which react to observed forwards without holding HTLCs.
+
+### Fixed
+
+- When the channel-candidate table exceeds its cap, the hourly
+  eviction now drops the most expendable candidate -- proven
+  underperformers first, then no-record candidates (preferring to
+  keep those advertising splice support), keepers last -- instead
+  of a uniformly random victim that could cost a proven earner
+  while underperformers stayed.
+
+- Channel size options that violate the channel-creation planner's
+  sizing requirement (`max-channel >= 3 * min-channel + 20000`
+  satoshis) no longer crash CLBOSS on the first creation run after
+  startup (#147).  The maximum is kept, since it sets typical open
+  size, and the minimum is lowered to the largest fitting value,
+  with a warning logged.  The creator also now skips a creation
+  cycle with a log line, instead of aborting, if onchain funds
+  drop below twice the minimum channel size between the decider's
+  trigger and planning (#137).
+
+- `contrib/recently-closed` accepts `--lightning-dir` and the network
+  flags like the other contrib scripts; its broken import and
+  `lookup_alias` call are fixed (it could not run before).
+
+- The `XRebalancer: transfer ...` log line reported `0 part(s)` (or
+  `0/0 parts`), no pending note, and no closest failure with
+  xrebalance plugin v0.4.4 or later, which returns the per-part
+  arrays only on request.  The line now reads the plugin's `summary`
+  object -- part counts, the amount still settling, and the closest
+  miss -- and falls back to the parts arrays for older responses
+  (#338).
+
+- Rebalance parts and forwards through a channel younger than the
+  last ten-minute `listpeerchannels` snapshot went unattributed: the
+  scid-to-peer table did not know the channel yet, and an unknown
+  end dropped the whole part.  The table now learns a channel from
+  CLN's `channel_state_changed` notification as soon as it carries a
+  short channel id, and a part with one end still unknown is
+  attributed to the end that is known (#337).
+
 ## [0.16.3] - 2026-08-18: "Tougher Than the Race"
 
 ### Security

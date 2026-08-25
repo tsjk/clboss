@@ -69,6 +69,8 @@ libclboss_la_SOURCES = \
 	Boss/Mod/ActiveProber.hpp \
 	Boss/Mod/AmountSettingsHandler.cpp \
 	Boss/Mod/AmountSettingsHandler.hpp \
+	Boss/Mod/AskreneLayer.cpp \
+	Boss/Mod/AskreneLayer.hpp \
 	Boss/Mod/AutoDisconnector.cpp \
 	Boss/Mod/AutoDisconnector.hpp \
 	Boss/Mod/AvailableRpcCommandsAnnouncer.cpp \
@@ -87,6 +89,8 @@ libclboss_la_SOURCES = \
 	Boss/Mod/ChannelFeeManager.hpp \
 	Boss/Mod/CommandReceiver.cpp \
 	Boss/Mod/CommandReceiver.hpp \
+	Boss/Mod/ChannelCandidateInvestigator/EvictionPolicy.cpp \
+	Boss/Mod/ChannelCandidateInvestigator/EvictionPolicy.hpp \
 	Boss/Mod/ChannelCandidateInvestigator/Gumshoe.cpp \
 	Boss/Mod/ChannelCandidateInvestigator/Gumshoe.hpp \
 	Boss/Mod/ChannelCandidateInvestigator/Janitor.cpp \
@@ -141,10 +145,10 @@ libclboss_la_SOURCES = \
 	Boss/Mod/Connector.hpp \
 	Boss/Mod/ConstructedListpeers.cpp \
 	Boss/Mod/ConstructedListpeers.hpp \
+	Boss/Mod/DemandTracker.cpp \
+	Boss/Mod/DemandTracker.hpp \
 	Boss/Mod/Dowser.cpp \
 	Boss/Mod/Dowser.hpp \
-	Boss/Mod/EarningsRebalancer.cpp \
-	Boss/Mod/EarningsRebalancer.hpp \
 	Boss/Mod/EarningsTracker.cpp \
 	Boss/Mod/EarningsTracker.hpp \
 	Boss/Mod/FeeModderByBalance.cpp \
@@ -157,30 +161,18 @@ libclboss_la_SOURCES = \
 	Boss/Mod/FeeModderBySize.hpp \
 	Boss/Mod/ForwardFeeMonitor.cpp \
 	Boss/Mod/ForwardFeeMonitor.hpp \
-	Boss/Mod/FundsMover/Attempter.cpp \
-	Boss/Mod/FundsMover/Attempter.hpp \
-	Boss/Mod/FundsMover/Claimer.cpp \
-	Boss/Mod/FundsMover/Claimer.hpp \
-	Boss/Mod/FundsMover/Main.cpp \
-	Boss/Mod/FundsMover/Main.hpp \
-	Boss/Mod/FundsMover/Runner.cpp \
-	Boss/Mod/FundsMover/Runner.hpp \
-	Boss/Mod/FundsMover/create_label.cpp \
-	Boss/Mod/FundsMover/create_label.hpp \
+	Boss/Mod/GetroutesFirstHop.cpp \
+	Boss/Mod/GetroutesFirstHop.hpp \
 	Boss/Mod/HtlcAcceptor.cpp \
 	Boss/Mod/HtlcAcceptor.hpp \
 	Boss/Mod/InitialConnect.cpp \
 	Boss/Mod/InitialConnect.hpp \
-	Boss/Mod/InitialRebalancer.cpp \
-	Boss/Mod/InitialRebalancer.hpp \
 	Boss/Mod/Initiator.cpp \
 	Boss/Mod/Initiator.hpp \
 	Boss/Mod/InternetConnectionMonitor.cpp \
 	Boss/Mod/InternetConnectionMonitor.hpp \
 	Boss/Mod/InvoicePayer.cpp \
 	Boss/Mod/InvoicePayer.hpp \
-	Boss/Mod/JitRebalancer.cpp \
-	Boss/Mod/JitRebalancer.hpp \
 	Boss/Mod/JsonOutputter.cpp \
 	Boss/Mod/JsonOutputter.hpp \
 	Boss/Mod/ListfundsAnalyzer.cpp \
@@ -195,8 +187,6 @@ libclboss_la_SOURCES = \
 	Boss/Mod/ListpeersAnnouncer.hpp \
 	Boss/Mod/Manifester.cpp \
 	Boss/Mod/Manifester.hpp \
-	Boss/Mod/MoveFundsCommand.cpp \
-	Boss/Mod/MoveFundsCommand.hpp \
 	Boss/Mod/NeedsConnectSolicitor.cpp \
 	Boss/Mod/NeedsConnectSolicitor.hpp \
 	Boss/Mod/NeedsOnchainFundsSwapper.cpp \
@@ -242,6 +232,8 @@ libclboss_la_SOURCES = \
 	Boss/Mod/PeerMetrician.hpp \
 	Boss/Mod/PeerStatistician.cpp \
 	Boss/Mod/PeerStatistician.hpp \
+	Boss/Mod/PeerTrackRecord.cpp \
+	Boss/Mod/PeerTrackRecord.hpp \
 	Boss/Mod/Reconnector.cpp \
 	Boss/Mod/Reconnector.hpp \
 	Boss/Mod/RegularActiveProbe.cpp \
@@ -250,12 +242,16 @@ libclboss_la_SOURCES = \
 	Boss/Mod/Rpc.hpp \
 	Boss/Mod/RpcWrapper.cpp \
 	Boss/Mod/RpcWrapper.hpp \
+	Boss/Mod/RebalanceModeManager.cpp \
+	Boss/Mod/RebalanceModeManager.hpp \
 	Boss/Mod/RebalanceUnmanager.cpp \
 	Boss/Mod/RebalanceUnmanager.hpp \
 	Boss/Mod/SelfUptimeMonitor.cpp \
 	Boss/Mod/SelfUptimeMonitor.hpp \
 	Boss/Mod/SendpayResultMonitor.cpp \
 	Boss/Mod/SendpayResultMonitor.hpp \
+	Boss/Mod/SetConfigHandler.cpp \
+	Boss/Mod/SetConfigHandler.hpp \
 	Boss/Mod/StatusCommand.cpp \
 	Boss/Mod/StatusCommand.hpp \
 	Boss/Mod/SwapManager.cpp \
@@ -270,6 +266,12 @@ libclboss_la_SOURCES = \
 	Boss/Mod/UnmanagedManager.hpp \
 	Boss/Mod/Waiter.cpp \
 	Boss/Mod/Waiter.hpp \
+	Boss/Mod/XRebalanceCensus.cpp \
+	Boss/Mod/XRebalanceCensus.hpp \
+	Boss/Mod/XRebalancePartMonitor.cpp \
+	Boss/Mod/XRebalancePartMonitor.hpp \
+	Boss/Mod/XRebalancer.cpp \
+	Boss/Mod/XRebalancer.hpp \
 	Boss/Mod/all.cpp \
 	Boss/Mod/all.hpp \
 	Boss/ModG/Detail/ReqRespBase.cpp \
@@ -277,6 +279,7 @@ libclboss_la_SOURCES = \
 	Boss/ModG/ReqResp.hpp \
 	Boss/ModG/RpcProxy.cpp \
 	Boss/ModG/RpcProxy.hpp \
+	Boss/ModG/RebalanceModeProxy.hpp \
 	Boss/ModG/RebalanceUnmanagerProxy.hpp \
 	Boss/ModG/Swapper.cpp \
 	Boss/ModG/Swapper.hpp \
@@ -293,6 +296,7 @@ libclboss_la_SOURCES = \
 	Boss/Msg/CommandRequest.hpp \
 	Boss/Msg/CommandResponse.hpp \
 	Boss/Msg/DbResource.hpp \
+	Boss/Msg/DemandObserved.hpp \
 	Boss/Msg/MonitorFeeByBalance.hpp \
 	Boss/Msg/MonitorFeeByTheory.hpp \
 	Boss/Msg/MonitorFeeSetChannel.hpp \
@@ -345,11 +349,12 @@ libclboss_la_SOURCES = \
 	Boss/Msg/RequestEarningsInfo.hpp \
 	Boss/Msg/RequestGetOnchainIgnoreFlag.hpp \
 	Boss/Msg/RequestListpays.hpp \
-	Boss/Msg/RequestMoveFunds.hpp \
 	Boss/Msg/RequestNewaddr.hpp \
 	Boss/Msg/RequestPeerFromScid.hpp \
 	Boss/Msg/RequestPeerMetrics.hpp \
+	Boss/Msg/RequestPeerTrackRecord.hpp \
 	Boss/Msg/RequestPeerStatistics.hpp \
+	Boss/Msg/RequestRebalanceMode.hpp \
 	Boss/Msg/RequestRebalanceUnmanaged.hpp \
 	Boss/Msg/RequestRpcCommand.hpp \
 	Boss/Msg/RequestSelfUptime.hpp \
@@ -358,11 +363,12 @@ libclboss_la_SOURCES = \
 	Boss/Msg/ResponseEarningsInfo.hpp \
 	Boss/Msg/ResponseGetOnchainIgnoreFlag.hpp \
 	Boss/Msg/ResponseListpays.hpp \
-	Boss/Msg/ResponseMoveFunds.hpp \
 	Boss/Msg/ResponseNewaddr.hpp \
 	Boss/Msg/ResponsePeerFromScid.hpp \
 	Boss/Msg/ResponsePeerMetrics.hpp \
+	Boss/Msg/ResponsePeerTrackRecord.hpp \
 	Boss/Msg/ResponsePeerStatistics.hpp \
+	Boss/Msg/ResponseRebalanceMode.hpp \
 	Boss/Msg/ResponseRebalanceUnmanaged.hpp \
 	Boss/Msg/ResponseRpcCommand.hpp \
 	Boss/Msg/ResponseSelfUptime.hpp \
@@ -388,6 +394,9 @@ libclboss_la_SOURCES = \
 	Boss/Msg/TimerRandomDaily.hpp \
 	Boss/Msg/TimerRandomHourly.hpp \
 	Boss/Msg/TimerTwiceDaily.hpp \
+	Boss/Msg/TrackRecord.hpp \
+	Boss/Msg/XRebalanceAttribution.hpp \
+	Boss/RebalanceMode.hpp \
 	Boss/Shutdown.hpp \
 	Boss/Signer.cpp \
 	Boss/Signer.hpp \
@@ -450,6 +459,8 @@ libclboss_la_SOURCES = \
 	Ln/Amount.hpp \
 	Ln/CommandId.cpp \
 	Ln/CommandId.hpp \
+	Ln/FeatureBit.cpp \
+	Ln/FeatureBit.hpp \
 	Ln/HtlcAccepted.cpp \
 	Ln/HtlcAccepted.hpp \
 	Ln/NodeId.cpp \
@@ -597,33 +608,42 @@ TESTS = \
 	tests/bitcoin/test_tx \
 	tests/boltz/test_claimtxhandler_scoped_update \
 	tests/boltz/test_match_lockscript \
+	tests/boss/channelcandidateinvestigator/test_evictionpolicy \
 	tests/boss/channelcandidateinvestigator/test_gumshoe \
 	tests/boss/channelcandidateinvestigator/test_secretary \
+	tests/boss/test_amountsettingshandler \
+	tests/boss/test_askrene_layer \
 	tests/boss/test_availablerpccommandsannouncer \
 	tests/boss/test_channel_create_destroy_monitor_missing_old_state \
 	tests/boss/test_channelcreationdecider \
 	tests/boss/test_channelcreator_planner \
 	tests/boss/test_channelcreator_rearrangerbysize \
 	tests/boss/test_channelcreator_reprioritizer \
-	tests/boss/test_earningsrebalancer \
 	tests/boss/test_earningstracker \
 	tests/boss/test_feemon_history \
 	tests/boss/test_feemodderbypricetheory \
 	tests/boss/test_forwardfeemonitor \
 	tests/boss/test_getmanifest \
+	tests/boss/test_getroutesfirsthop \
 	tests/boss/test_invoicepayer_decodepay \
-	tests/boss/test_initialrebalancer \
+	tests/boss/test_initiator_clnversion \
 	tests/boss/test_initiator_listconfigs_proxy \
-	tests/boss/test_jitrebalancer \
 	tests/boss/test_needsconnectsolicitor \
 	tests/boss/test_onchainfeemonitor_samples_init \
+	tests/boss/test_peerfromscidmapper \
 	tests/boss/test_peerjudge_agetracker \
 	tests/boss/test_recentearnings \
 	tests/boss/test_earningshistory \
+	tests/boss/test_xrebalancecensus \
+	tests/boss/test_setconfighandler \
+	tests/boss/test_xrebalancepartmonitor \
+	tests/boss/test_xrebalancer \
+	tests/boss/test_xrebalancer_plugin \
 	tests/boss/test_peerjudge_algo \
 	tests/boss/test_peerjudge_datagatherer \
 	tests/boss/test_peerstatistician \
 	tests/boss/test_peercomplaintsdesk_main \
+	tests/boss/test_peertrackrecord \
 	tests/boss/test_peercomplaintsdesk_recorder \
 	tests/boss/test_reqresp \
 	tests/boss/test_rpc \
@@ -655,6 +675,7 @@ TESTS = \
 	tests/json/test_out_simple \
 	tests/ln/test_amount \
 	tests/ln/test_commandid \
+	tests/ln/test_featurebit \
 	tests/ln/test_htlcaccepted \
 	tests/ln/test_nodeid \
 	tests/ln/test_scid \
@@ -672,7 +693,8 @@ TESTS = \
 	tests/util/test_date \
 	tests/util/test_duration \
 	tests/util/test_either \
-	tests/util/test_format
+	tests/util/test_format \
+	tests/util/test_str
 check_PROGRAMS = $(TESTS)
 
 if USE_VALGRIND

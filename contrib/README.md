@@ -58,6 +58,10 @@ cd contrib/
 
 ./recently-closed
 
+./clboss-xrebalance-view
+
+./cln-plugin-bounce <plugin-name>...
+
 The `clboss-routing-stats` and `clboss-forwarding-stats` scripts now accept `--days` to limit
 how many days of earnings history are considered when ranking channels.
 
@@ -75,6 +79,32 @@ how many days of earnings history are considered when ranking channels.
   accepts the `--days` option.
 - **`recently-closed`** lists channels that closed within the last N days, also
   controlled via `--days`.
+- **`clboss-xrebalance-view`** shows what the xrebalance planner would do
+  with the node's current state: every channel with its balance band and
+  windowed net earnings rates, the fill and drain candidates tinted, the
+  floor ladder with each rung's volume and budget, the channels of the
+  widest cycle in bold, and the `xrebalance` request the driver would send
+  for it (`dryrun=true` by default).  Tuning defaults come from the live
+  `clboss-xrebalance-*` options; `--fill-loc`, `--drain-loc`,
+  `--route-cost-floor`, `--grant`, and `--gain` preview other settings.
+- **`cln-plugin-bounce`** stops and restarts running plugins without
+  restarting `lightningd`.  `plugin stop` needs a plugin's exact
+  registered name, which for versioned installs includes the version
+  string; the script looks each one up from `plugin list`, stops the
+  named plugins in the order given, and starts them again in reverse
+  order, so the list order encodes any shutdown dependency between
+  them.  Restarts use the unversioned sibling path when one exists
+  (usually a symlink maintained by the install script), so a repointed
+  symlink brings up the new version.  Config-file edits made since
+  `lightningd` started are applied in a second phase, which is skipped
+  with a warning naming the option and file when any config-file
+  option is no longer registered -- including one a newly installed
+  build dropped, which leaves `lightningd` holding a stale configvar
+  until it restarts.  Plugin names are the arguments
+  not starting with `-`; every other argument is passed to
+  `lightning-cli` (e.g. `--signet --lightning-dir=...`), so names and
+  options may appear in any order.  Plain POSIX sh plus `jq`, so unlike
+  a shell alias it also works under `sudo`.
 - **`fee-log-parser`** is a parser that streams DEBUG-level logging and writes
   a sqlite database containing fee algorithm information. CLBOSS now records
   the same schema in its internal database (`data.clboss`, tables

@@ -8,10 +8,9 @@
 #include"Boss/Msg/Manifestation.hpp"
 #include"Boss/Msg/ProvideStatus.hpp"
 #include"Boss/Msg/RequestEarningsInfo.hpp"
-#include"Boss/Msg/RequestMoveFunds.hpp"
 #include"Boss/Msg/ResponseEarningsInfo.hpp"
-#include"Boss/Msg/ResponseMoveFunds.hpp"
 #include"Boss/Msg/SolicitStatus.hpp"
+#include"Boss/Msg/XRebalanceAttribution.hpp"
 #include"Boss/concurrent.hpp"
 #include"Ev/Io.hpp"
 #include"Json/Out.hpp"
@@ -20,7 +19,6 @@
 #include"Util/make_unique.hpp"
 
 #include<cmath>
-#include<map>
 #include<iostream>
 #include<unordered_set>
 
@@ -87,14 +85,6 @@ private:
 	std::function<double()> get_now;
 	Sqlite3::Db db;
 
-	/* Information of a pending MoveFunds.  */
-	struct Pending {
-		Ln::NodeId source;
-		Ln::NodeId destination;
-	};
-	/* Maps a requester to the source-destination of the movefunds.  */
-	std::map<void*, Pending> pendings;
-
 	void start() {
 		bus.subscribe<Msg::DbResource
 			     >([this](Msg::DbResource const& r) {
@@ -105,13 +95,9 @@ private:
 			     >([this](Msg::ForwardFee const& f) {
 				     return forward_fee(f.in_id, f.out_id, f.fee, f.amount);
 		});
-		bus.subscribe<Msg::RequestMoveFunds
-			     >([this](Msg::RequestMoveFunds const& req) {
-			return request_move_funds(req);
-		});
-		bus.subscribe<Msg::ResponseMoveFunds
-			     >([this](Msg::ResponseMoveFunds const& rsp) {
-			return response_move_funds(rsp);
+		bus.subscribe<Msg::XRebalanceAttribution
+			     >([this](Msg::XRebalanceAttribution const& m) {
+			return xrebalance_attribution(m);
 		});
 		bus.subscribe<Msg::RequestEarningsInfo
 			     >([this](Msg::RequestEarningsInfo const& req) {
@@ -400,70 +386,64 @@ private:
 			return Ev::lift();
 		});
 	}
+	/* The part monitor already identified the
+	 * (source_peer, dest_peer) for one successful
+	 * sendpay part and packaged the per-part amount_moved /
+	 * fee_spent, so we run the symmetric DB update directly:
+	 * source peer gets in_expenditures / in_rebalanced (more
+	 * inbound capacity), destination peer gets out_expenditures /
+	 * out_rebalanced (more outbound).
+	 *
+	 * One bus message per successful part (an MPP-split
+	 * transfer can produce several), so fees are recorded
+	 * per-part rather than aggregated at the top-level call --
+	 * finer-grained, matches the per-part routing reality. */
 	Ev::Io<void>
-	request_move_funds(Boss::Msg::RequestMoveFunds const& req) {
-		auto& pending = pendings[req.requester];
-		pending.source = req.source;
-		pending.destination = req.destination;
-		return Ev::lift();
-	}
-	Ev::Io<void>
-	response_move_funds(Boss::Msg::ResponseMoveFunds const& rsp) {
-		auto requester = rsp.requester;
-		auto fee = rsp.fee_spent;
-		auto amount = rsp.amount_moved;
-		return db.transact().then([this, requester, fee, amount
-					  ](Sqlite3::Tx tx) {
-			auto it = pendings.find(requester);
-			if (it == pendings.end())
-				/* Not in our table, huh, weird.  */
-				return Ev::lift();
-			auto& pending = it->second;
-
+	xrebalance_attribution(Boss::Msg::XRebalanceAttribution const& m) {
+		auto source = m.source;
+		auto destination = m.destination;
+		auto fee = m.fee_spent;
+		auto amount = m.amount_moved;
+		return db.transact().then(
+		    [this, source, destination, fee, amount]
+		    (Sqlite3::Tx tx) {
 			auto bucket = bucket_time(get_now());
-			ensure(tx, pending.source, bucket);
-			ensure(tx, pending.destination, bucket);
-
-			/* Source gets in-expenditures since it gets more
-			 * incoming capacity (for more earnings for the
-			 * incoming direction).  */
-			tx.query(R"QRY(
-			UPDATE "EarningsTracker"
-			   SET in_expenditures = in_expenditures + :fee,
-                               in_rebalanced = in_rebalanced + :amount
-			 WHERE node = :node
-			   AND time_bucket = :bucket
-			     ;
-			)QRY")
-				.bind(":node", std::string(pending.source))
-				.bind(":bucket", bucket)
-				.bind(":fee", fee.to_msat())
-				.bind(":amount", amount.to_msat())
-				.execute()
-				;
-			/* Destination gets out-expenditures for same
-			 * reason.
-			 */
-			tx.query(R"QRY(
-			UPDATE "EarningsTracker"
-			   SET out_expenditures = out_expenditures + :fee,
-                               out_rebalanced = out_rebalanced + :amount
-			 WHERE node = :node
-			   AND time_bucket = :bucket
-			     ;
-			)QRY")
-				.bind( ":node"
-				     , std::string(pending.destination)
-				     )
-				.bind(":bucket", bucket)
-				.bind(":fee", fee.to_msat())
-				.bind(":amount", amount.to_msat())
-				.execute()
-				;
-
-			/* Erase it.  */
-			pendings.erase(it);
-
+			/* A null peer is a side the part monitor could
+			 * not resolve; only the known side is booked.  */
+			if (source) {
+				ensure(tx, source, bucket);
+				tx.query(R"QRY(
+				UPDATE "EarningsTracker"
+				   SET in_expenditures = in_expenditures + :fee,
+				       in_rebalanced = in_rebalanced + :amount
+				 WHERE node = :node
+				   AND time_bucket = :bucket
+				     ;
+				)QRY")
+					.bind(":node", std::string(source))
+					.bind(":bucket", bucket)
+					.bind(":fee", fee.to_msat())
+					.bind(":amount", amount.to_msat())
+					.execute()
+					;
+			}
+			if (destination) {
+				ensure(tx, destination, bucket);
+				tx.query(R"QRY(
+				UPDATE "EarningsTracker"
+				   SET out_expenditures = out_expenditures + :fee,
+				       out_rebalanced = out_rebalanced + :amount
+				 WHERE node = :node
+				   AND time_bucket = :bucket
+				     ;
+				)QRY")
+					.bind(":node", std::string(destination))
+					.bind(":bucket", bucket)
+					.bind(":fee", fee.to_msat())
+					.bind(":amount", amount.to_msat())
+					.execute()
+					;
+			}
 			tx.commit();
 			return Ev::lift();
 		});

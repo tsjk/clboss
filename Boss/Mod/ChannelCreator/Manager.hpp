@@ -4,9 +4,12 @@
 #include"Boss/Mod/ChannelCreator/Reprioritizer.hpp"
 #include"Boss/ModG/ReqResp.hpp"
 #include"Boss/Msg/RequestDowser.hpp"
+#include"Boss/Msg/RequestPeerTrackRecord.hpp"
 #include"Boss/Msg/ResponseDowser.hpp"
+#include"Boss/Msg/ResponsePeerTrackRecord.hpp"
 #include"Ln/NodeId.hpp"
 #include<memory>
+#include<set>
 #include<utility>
 #include<vector>
 
@@ -40,12 +43,18 @@ private:
 	Ln::NodeId self;
 
 	ModG::ReqResp<Msg::RequestDowser, Msg::ResponseDowser> dowser;
+	ModG::ReqResp< Msg::RequestPeerTrackRecord
+		     , Msg::ResponsePeerTrackRecord
+		     > track_record;
 
 	std::unique_ptr<Boss::Mod::ChannelCreator::Reprioritizer> reprioritizer;
 
 	Ln::Amount min_amount;
 	Ln::Amount max_amount;
 	Ln::Amount min_remaining;
+
+	/* clboss-candidate-prefer-spliceable.  */
+	bool prefer_spliceable;
 
 	void start();
 	Ev::Io<void> on_request_channel_creation(Ln::Amount);
@@ -56,6 +65,12 @@ private:
 	/* Perform reprioritization and log it.  */
 	Ev::Io<std::vector<std::pair<Ln::NodeId, Ln::NodeId>>>
 	reprioritize(std::vector<std::pair<Ln::NodeId, Ln::NodeId>>);
+	/* Partition proposals by earnings track record and log it.  */
+	Ev::Io<std::vector<std::pair<Ln::NodeId, Ln::NodeId>>>
+	prioritize_by_track_record(std::vector<std::pair<Ln::NodeId, Ln::NodeId>>);
+	/* Which of the given nodes announce splicing support.  */
+	Ev::Io<std::set<Ln::NodeId>>
+	get_spliceable_nodes(std::vector<Ln::NodeId>);
 
 public:
 	Manager() =delete;
@@ -72,6 +87,8 @@ public:
 		 , carpenter(carpenter_)
 		 , self()
 		 , dowser(bus)
+		 , track_record(bus)
+		 , prefer_spliceable(true)
 		 {
 		start();
 	}
