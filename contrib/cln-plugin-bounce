@@ -36,13 +36,17 @@
 # running values, stops and restarts just that plugin with the
 # differing values passed as options, while every other plugin is
 # up.  When nothing differs, phase two is a no-op and the bounce is
-# exactly the classic single pass.  As a belt-and-suspenders check,
-# phase two is skipped entirely (with a warning) if any option named
-# in the config files is not currently registered -- e.g. some other
-# plugin was stopped by hand -- since that is the state that crashes
-# unfixed lightningd.  If an optioned start is rejected, the plugin
-# is restarted bare with a warning: a running plugin on stale values
-# beats a stopped one.
+# exactly the classic single pass.  Phase two is skipped entirely
+# (with a warning) if any option named in the config files is not
+# registered, checked twice: before the stops, against the running
+# plugins (some other plugin may have been stopped by hand), and
+# again after phase one, against the restarted ones.  Only the
+# second check can see an option the new build no longer registers:
+# the first snapshot was taken while the old build still registered
+# it.  Such an option leaves lightningd holding a stale configvar
+# until lightningd restarts, and the warning says so.  If an
+# optioned start is rejected, the plugin is restarted bare with a
+# warning: a running plugin on stale values beats a stopped one.
 #
 # Plugin names are the arguments that do not start with "-"; each is
 # a short name ("clboss", "xrebalance"), or a full versioned basename
@@ -112,9 +116,11 @@ trap 'rm -rf "$tmpd"' EXIT
 
 # Gather each plugin's options from the config files lightningd read
 # at its startup.  Must happen before the stops: a stopped plugin's
-# options vanish from listconfigs.
+# options vanish from listconfigs.  $tmpd/cfg is the files
+# concatenated; $tmpd/cfgsrc lists each option name with its file.
 configs=$("$lcli" "$@" listconfigs)
 
+: >"$tmpd/cfgsrc"
 printf '%s\n' "$configs" \
 	| jq -r '.configs | to_entries[] | .value
 		| (.source? // empty), (.sources[]? // empty)' \
@@ -122,6 +128,14 @@ printf '%s\n' "$configs" \
 	| while IFS= read -r f; do
 		if [ -r "$f" ]; then
 			cat "$f"
+			awk -v f="$f" '
+				{
+					sub(/^[ \t]+/, "")
+					if ($0 == "" || $0 ~ /^#/) next
+					eq = index($0, "=")
+					print (eq ? substr($0, 1, eq - 1) : $0) "\t" f
+				}
+			' "$f" >>"$tmpd/cfgsrc"
 		else
 			echo "$me: warning: cannot re-read $f" >&2
 		fi
@@ -183,32 +197,30 @@ done <<EOF
 $resolved
 EOF
 
+# Print "name<TAB>file" for every option named in the config files
+# that is not registered in the listconfigs output $1.
+unregistered() {
+	ur_configs=$1
+	cut -f1 "$tmpd/cfgsrc" | sort -u | while IFS= read -r ur_k; do
+		[ -n "$ur_k" ] || continue
+		case "$ur_k" in *" "*) continue ;; esac
+		printf '%s\n' "$ur_configs" \
+			| jq -e --arg k "$ur_k" '.configs | has($k)' >/dev/null \
+			|| awk -F'\t' -v k="$ur_k" '$1 == k' "$tmpd/cfgsrc"
+	done
+}
+
 # Refuse the optioned restarts when any option named in the config
 # files is not currently registered: on lightningd without the
 # configvar_finalize_overrides NULL-guard fix, an optioned start in
 # that state is a segfault.
 unsafe=
-while IFS= read -r k; do
-	[ -n "$k" ] || continue
-	case "$k" in *" "*) continue ;; esac
-	if ! printf '%s\n' "$configs" \
-		| jq -e --arg k "$k" '.configs | has($k)' >/dev/null; then
-		if [ -z "$unsafe" ]; then
-			echo "$me: warning: config option(s) not registered (a plugin may be stopped); config edits will not be applied this run:" >&2
-			unsafe=1
-		fi
-		echo "    $k" >&2
-	fi
-done <<EOF
-$(awk '
-	{
-		sub(/^[ \t]+/, "")
-		if ($0 == "" || $0 ~ /^#/) next
-		eq = index($0, "=")
-		print (eq ? substr($0, 1, eq - 1) : $0)
-	}
-' <"$tmpd/cfg" | sort -u)
-EOF
+unregistered "$configs" >"$tmpd/missing1"
+if [ -s "$tmpd/missing1" ]; then
+	echo "$me: warning: config option(s) not registered (a plugin may be stopped); config edits will not be applied this run:" >&2
+	awk -F'\t' '{ print "    " $1 " (" $2 ")" }' "$tmpd/missing1" >&2
+	unsafe=1
+fi
 
 # Stop in the order given.
 stopped_names=
@@ -300,6 +312,25 @@ while read -r n path; do
 done <<EOF
 $tostart
 EOF
+
+# Check again against the restarted plugins.  The snapshot taken
+# before the stops was of the old builds, so an option the new
+# build no longer registers still looked registered in it.  Such an
+# option leaves lightningd holding a stale configvar, which only a
+# lightningd restart clears; until then an optioned start (or any
+# setconfig) crashes unfixed lightningd, so refuse phase two for
+# every plugin.  Options the first check already reported are left
+# out here: they were not registered before the stops either, and
+# that warning gave the likelier cause.
+configs2=$("$lcli" "$@" listconfigs)
+unregistered "$configs2" | grep -v -x -F -f "$tmpd/missing1" \
+	>"$tmpd/missing2" || :
+if [ -s "$tmpd/missing2" ]; then
+	echo "$me: warning: config file option(s) no longer registered by the running plugins:" >&2
+	awk -F'\t' '{ print "    " $1 " (" $2 ")" }' "$tmpd/missing2" >&2
+	echo "$me: lightningd keeps a stale configvar for each until it restarts; a setconfig or an optioned plugin start before then crashes lightningd without the configvar fix (through at least v26.04).  Remove or comment the line(s), then restart lightningd.  Config edits are not applied this run." >&2
+	unsafe=1
+fi
 
 # Phase two: apply config edits one plugin at a time, while every
 # other plugin is up.

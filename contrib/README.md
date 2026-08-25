@@ -95,7 +95,12 @@ how many days of earnings history are considered when ranking channels.
   order, so the list order encodes any shutdown dependency between
   them.  Restarts use the unversioned sibling path when one exists
   (usually a symlink maintained by the install script), so a repointed
-  symlink brings up the new version.  Plugin names are the arguments
+  symlink brings up the new version.  Config-file edits made since
+  `lightningd` started are applied in a second phase, which is skipped
+  with a warning naming the option and file when any config-file
+  option is no longer registered -- including one a newly installed
+  build dropped, which leaves `lightningd` holding a stale configvar
+  until it restarts.  Plugin names are the arguments
   not starting with `-`; every other argument is passed to
   `lightning-cli` (e.g. `--signet --lightning-dir=...`), so names and
   options may appear in any order.  Plain POSIX sh plus `jq`, so unlike
