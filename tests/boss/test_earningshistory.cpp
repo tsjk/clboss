@@ -47,7 +47,7 @@ Ev::Io<void> raiseForwardFeeLoop(S::Bus& bus, int count) {
 		});
 }
 
-Ev::Io<void> raiseMoveFundsLoop(S::Bus& bus, int count) {
+Ev::Io<void> raiseAttributionLoop(S::Bus& bus, int count) {
 	if (count == 0) {
 		return Ev::lift();
 	}
@@ -60,7 +60,7 @@ Ev::Io<void> raiseMoveFundsLoop(S::Bus& bus, int count) {
 		})
 		.then([&bus, count]() {
 			mock_now += 24 * 60 * 60; // advance one day
-			return raiseMoveFundsLoop(bus, count - 1);
+			return raiseAttributionLoop(bus, count - 1);
 		});
 }
 
@@ -91,7 +91,7 @@ int main() {
 	}).then([&]() {
 		// Rewind 1 week and add 7 days of one rebalance per day
 		mock_now -= (7 * 24 * 60 * 60);
-		return raiseMoveFundsLoop(bus, 7);
+		return raiseAttributionLoop(bus, 7);
 	}).then([&]() {
 		// Check history for all peers
 		++req_id;
