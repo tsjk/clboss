@@ -71,7 +71,9 @@ auto constexpr default_maxparts = double(80.0);
 
 /* Strictness benders, both neutral by default.  grant credits every
  * channeled peer an assumed prior of grant ppm on one capacity-turn
- * of volume; gain multiplies the joined NetPpm.  */
+ * of volume; gain multiplies the joined net rate.  The result is
+ * what clboss-xrebalance-view shows as InAdjPpm/OutAdjPpm, beside
+ * the raw InNetPpm/OutNetPpm.  */
 auto constexpr default_grant = double(0.0);
 auto constexpr default_gain = double(1.0);
 
@@ -224,11 +226,11 @@ private:
 				"real volume dilutes it toward the measured "
 				"rate.  0 = record-only (default).")
 			     + manifest_option(opt_gain, default_gain,
-				"Multiplier (> 0) on the joined NetPpm, both "
-				"sides, before candidacy, floor, and maxfee "
+				"Multiplier (> 0) on each side's net earnings "
+				"rate, before candidacy, floor, and maxfee "
 				"pricing.  >1 accepts routes costing up to "
-				"gain x the measured earnings rate; 1 = "
-				"strict (default).");
+				"gain x the measured rate; <1 accepts only "
+				"routes cheaper than it; 1 = strict (default).");
 		});
 		bus.subscribe<Msg::Option
 			     >([this](Msg::Option const& o) {

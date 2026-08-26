@@ -688,7 +688,8 @@ All of the following are *dynamic* (`setconfig`) options:
   Default `0` (record-only).
 * `clboss-xrebalance-gain` — multiplier on the measured earnings
   rates before candidacy and pricing; above `1` accepts routes
-  costing up to gain times the measured rate.  Default `1` (strict).
+  costing up to gain times the measured rate, below `1` only routes
+  cheaper than it.  Default `1` (strict).
 
 ### `--clboss-min-nodes-to-process=<number>`
 
