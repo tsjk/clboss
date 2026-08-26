@@ -53,7 +53,7 @@ auto const opt_maxparts = std::string("clboss-xrebalance-maxparts");
 auto const opt_grant = std::string("clboss-xrebalance-grant");
 auto const opt_gain = std::string("clboss-xrebalance-gain");
 
-auto constexpr default_per_hour = double(12.0);
+auto constexpr default_per_hour = double(24.0);
 auto constexpr default_window_days = double(90.0);
 /* Route-cost floor.  Default "auto": each cycle cuts the derived
  * floor ladder at a random rung.  floor_ppm starts at fallback_floor

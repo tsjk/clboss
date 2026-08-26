@@ -664,7 +664,7 @@ All of the following are *dynamic* (`setconfig`) options:
 
 * `clboss-xrebalance-per-hour` — average matched-cycle rate, Poisson
   paced; `0` pauses the matched loop (demand-triggered cycles still
-  run).  Default `12`.
+  run).  Default `24`.
 * `clboss-xrebalance-route-cost-floor` — the ppm floor at which the
   matched pool stops growing; also sets the cycle's amount and fee
   budget.  `auto` derives a ladder of floors and sweeps a random rung
