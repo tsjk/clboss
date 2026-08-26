@@ -30,8 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
   `lightning-cli askrene-listlayers` shows which layers exist.
   Release builds of 0.16.x created no layers.
-- Nothing else to set: the new options need no settings to start,
-  and their defaults are the values run on live nodes.
+- Nothing else to set: the new options need no settings to start.
 
 ### Added
 
@@ -60,8 +59,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   entry says whether it is dynamic.  Invalid setconfig values are
   rejected with a proper error instead of being silently ignored.
 
+- `docs/xrebalance_overview.md` explains why the built-in rebalancers
+  were replaced, how a cycle is decided, and what each tuning option
+  changes.
+
 - `contrib/clboss-xrebalance-view` shows the rebalancer's view of the
-  node: each channel's band and its peer's net earnings rates, the
+  node: each channel's band and its peer's net earnings rates, raw
+  (`InNetPpm` / `OutNetPpm`) and with grant and gain applied
+  (`InAdjPpm` / `OutAdjPpm`, the values the driver ranks by), the
   fill and drain pools, the derived floor ladder, and the `xrebalance`
   request the widest cycle would send, as a dry-run command line.
   `contrib/cln-plugin-bounce` restarts named dynamic plugins in
