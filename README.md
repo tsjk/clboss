@@ -638,7 +638,9 @@ Selects how CLBOSS rebalances channel liquidity:
 
 The `xrebalance` plugin is a separate CLN plugin; see "The xrebalance
 plugin" under Installing for the version CLBOSS needs and how to
-build and load it.
+build and load it.  [`docs/xrebalance_overview.md`](docs/xrebalance_overview.md)
+explains how the rebalancer decides what to move and at what price,
+and what the tuning options change.
 
 Rebalance cycles run on a Poisson clock (`clboss-xrebalance-per-hour`
 below) and are additionally triggered on demand, when an observed
