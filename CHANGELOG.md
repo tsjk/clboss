@@ -99,6 +99,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   running plugin changes; the code stays in history should an
   earnings-based closer be wanted again (#336).
 
+### Credits
+
+Thanks to the contributors to this release:
+- @Amperstrand: the `--clboss-min-onchain` floor (#340) and the A-ES
+  sampling fix (#343).
+- @tsjk: reported the duplicate channel open and supplied the log
+  that showed it (#332).
+- @daywalker90: relayed the `--offline` report from the Core
+  Lightning Telegram group (#346).
+
 ## [0.17.0] - 2026-09-11: "Reason to Rebalance"
 
 ### Upgrading from 0.16.x
