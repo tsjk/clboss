@@ -47,9 +47,10 @@ changes and fixes.
 
 ## Credits
 
-[Amperstrand](https://github.com/Amperstrand) contributed the
-on-chain reserve floor and a fix to how channel candidates are
-sampled.  [tsjk](https://github.com/tsjk) reported the duplicate
-channel open and supplied the log that showed it.
-[daywalker90](https://github.com/daywalker90) relayed the report of
-the `--offline` problem from the Core Lightning Telegram group.
+- [Amperstrand](https://github.com/Amperstrand) contributed the
+  on-chain reserve floor and a fix to how channel candidates are
+  sampled.
+- [tsjk](https://github.com/tsjk) reported the duplicate channel
+  open and supplied the log that showed it.
+- [daywalker90](https://github.com/daywalker90) relayed the report
+  of the `--offline` problem from the Core Lightning Telegram group.
