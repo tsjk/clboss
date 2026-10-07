@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [0.17.1] - Unreleased
+## [0.17.1] - 2026-10-07: "Waitin' on a Sunny Day"
 
 ### Changed
 
