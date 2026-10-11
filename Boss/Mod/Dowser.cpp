@@ -78,6 +78,24 @@ auto const probe_final_cltv = std::uint32_t(14);
  */
 auto const reserve_factor = double(0.985);
 
+/* Is this RpcError the askrene "no flow at this amount" answer
+ * (codes 205 "Unable to find a route" and 206 "Route too
+ * expensive")?  These are answers, not failures: both the legacy
+ * fixed probe and this search read them as zero flow.  lightningd
+ * reports them negated per JSON-RPC; accept both spellings.  */
+bool is_no_flow_error(Boss::Mod::RpcError const& e) {
+	auto const& err = e.error;
+	if (!err.is_object() || !err.has("code"))
+		return false;
+	auto code_j = err["code"];
+	if (!code_j.is_number())
+		return false;
+	auto code = std::int64_t(double(code_j));
+	return code == -205 || code == -206
+	    || code == 205 || code == 206
+	    ;
+}
+
 }
 
 namespace Boss { namespace Mod {
@@ -141,6 +159,28 @@ public:
 		auto self = shared_from_this();
 		return Ev::lift().then([self]() {
 			return self->probe();
+		}).catching<RpcError>([self](RpcError const& e) {
+			/* An unexpected RPC error aborted the probe
+			 * (the expected no-flow codes are answered
+			 * inside probe_flow).  Report zero flow so the
+			 * requester is not left waiting -- ReqResp has
+			 * no error channel -- but log loudly: this is
+			 * a failure, not "no flow".
+			 */
+			return Boss::log( self->bus, Error
+					, "Dowser: %s -> %s: getroutes"
+					  " failed, reporting 0 for this"
+					  " dowse: %s"
+					, std::string(self->fromid)
+						.c_str()
+					, std::string(self->toid)
+						.c_str()
+					, e.error.direct_text()
+						.c_str()
+					).then([self]() {
+				self->amount = Ln::Amount::sat(0);
+				return Ev::lift();
+			});
 		}).then([self]() {
 			return self->bus.raise(Msg::ResponseDowser{
 				self->requester, self->amount
@@ -210,14 +250,21 @@ private:
 				}
 			}
 			return Ev::lift(delivered);
-		}).catching<RpcError>([](RpcError const& _) {
-			/* getroutes errors -- including 205 "Unable to
-			 * find a route" and 206 "Route too expensive" --
-			 * are the askrene way of saying "no flow at this
-			 * amount".
+		}).catching<RpcError>([](RpcError const& e) {
+			/* getroutes reports "no flow at this amount" as
+			 * a failed RPC (205 "Unable to find a route",
+			 * 206 "Route too expensive"): an answer, not a
+			 * failure -- map exactly those to zero flow.
+			 * Any other RpcError (daemon, request, or
+			 * askrene failure) propagates so the dowse
+			 * aborts, instead of being misread as "no flow
+			 * at this probe" -- a fabricated zero would
+			 * also corrupt the search, as refine() drives
+			 * the estimate DOWN on a failed probe.
 			 */
-			(void)_;
-			return Ev::lift(Ln::Amount::sat(0));
+			if (is_no_flow_error(e))
+				return Ev::lift(Ln::Amount::sat(0));
+			throw;
 		});
 	}
 
