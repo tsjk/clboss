@@ -72,10 +72,10 @@ public:
 	ProposalCollector(S::Bus& bus) {
 		bus.subscribe<Boss::Msg::ProposeChannelCandidates
 			     >([this](Boss::Msg::ProposeChannelCandidates const& p) {
-			proposals.emplace_back( std::string(p.proposal)
-					      , std::string(p.patron)
-					      );
-			return Ev::lift();
+				proposals.emplace_back( std::string(p.proposal)
+						      , std::string(p.patron)
+						      );
+				return Ev::lift();
 		});
 	}
 	ProposalCollector(ProposalCollector&&) =delete;
@@ -124,6 +124,10 @@ auto const PATRON5 = std::string("02")
 	+ "d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5"
 	+ "d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5"
 	;
+auto const PATRON6 = std::string("02")
+	+ "d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6"
+	+ "d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6"
+	;
 
 }
 
@@ -159,19 +163,22 @@ int main() {
 			1
 		);
 	}).then([&]() {
-		/* Both batches requested a connect...  */
-		assert(connector.connects == 2);
-		/* ...and neither has completed: no proposal can
+		/* Every Case queued on a node asks the same
+		 * question of it: exactly ONE connect is raised
+		 * for the shared node, not one per Case.  */
+		assert(connector.connects == 1);
+		/* And nothing has completed: no proposal can
 		 * surface before any ResponseConnect.  */
 		assert(collector.proposals.empty());
 
-		/* The real Connector answers asynchronously.  */
+		/* The real Connector answers asynchronously, with
+		 * a single ResponseConnect for the single
+		 * RequestConnect.  */
 		return connector.flush(true);
 	}).then([&]() {
-		/* Both proposals must surface, each attributed to
-		 * its own patron.  Pre-fix, add_case overwrote
-		 * the first Case, destroying it with its whole
-		 * batch still unprocessed.  */
+		/* The single response's outcome is handed to BOTH
+		 * waiting Cases: each patron's proposal surfaces
+		 * with its own attribution.  */
 		assert(collector.count(HUB, PATRON1) == 1);
 		assert(collector.count(HUB, PATRON2) == 1);
 		assert(collector.proposals.size() == 2);
@@ -185,7 +192,7 @@ int main() {
 			1
 		);
 	}).then([&]() {
-		assert(connector.connects == 3);
+		assert(connector.connects == 2);
 		return connector.flush(true);
 	}).then([&]() {
 		assert(collector.count(OTHER, PATRON3) == 1);
@@ -213,19 +220,53 @@ int main() {
 			1
 		);
 	}).then([&]() {
-		assert(connector.connects == 5);
-		/* Both connects to the shared node fail.  */
+		/* Again one connect for the shared node: the
+		 * duplicate-connect removal holds on the failure
+		 * path too.  */
+		assert(connector.connects == 3);
+		/* The single connect to the shared node fails.  */
 		return connector.flush(false);
 	}).then([&]() {
-		/* Nothing proposed from the failed connects.  */
+		/* The failure is fanned out: nothing proposed from
+		 * the failed connects...  */
 		assert(collector.proposals.size() == 3);
-		/* But PATRON4's Case lives on and now wants
-		 * OTHER2.  */
-		assert(connector.connects == 6);
+		/* ...but PATRON4's Case lives on and has moved to
+		 * its NEXT candidate, raising a fresh connect for
+		 * it; PATRON5's Case, out of candidates, ends.  */
+		assert(connector.connects == 4);
 		return connector.flush(true);
 	}).then([&]() {
 		assert(collector.count(OTHER2, PATRON4) == 1);
 		assert(collector.proposals.size() == 4);
+
+		/* Self-re-registration: a Case whose batch
+		 * contains the same node again re-registers it
+		 * from within the fan-out of its own response;
+		 * the entry was erased before execution, so the
+		 * re-registration lands in a fresh entry and
+		 * triggers a fresh connect rather than being
+		 * consumed by the in-flight response.  */
+		return preinvestigate(
+			{ Boss::Msg::ProposeChannelCandidates{
+				Ln::NodeId(HUB), Ln::NodeId(PATRON6)
+			}
+			, Boss::Msg::ProposeChannelCandidates{
+				Ln::NodeId(HUB), Ln::NodeId(PATRON6)
+			} },
+			2
+		);
+	}).then([&]() {
+		assert(connector.connects == 5);
+		return connector.flush(true);
+	}).then([&]() {
+		/* The first HUB proposal surfaced and the Case
+		 * re-registered HUB for its second candidate.  */
+		assert(collector.count(HUB, PATRON6) == 1);
+		assert(connector.connects == 6);
+		return connector.flush(true);
+	}).then([&]() {
+		assert(collector.count(HUB, PATRON6) == 2);
+		assert(collector.proposals.size() == 6);
 
 		return Ev::lift(0);
 	});
