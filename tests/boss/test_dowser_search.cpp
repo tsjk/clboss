@@ -3,6 +3,7 @@
 #include"Boss/Mod/Rpc.hpp"
 #include"Boss/ModG/ReqResp.hpp"
 #include"Boss/Msg/Init.hpp"
+#include"Boss/Msg/JsonCout.hpp"
 #include"Boss/Msg/Network.hpp"
 #include"Boss/Msg/RequestDowser.hpp"
 #include"Boss/Msg/ResponseDowser.hpp"
@@ -186,12 +187,18 @@ private:
 			return send_error( id, -205
 					  , "Unable to find a route"
 					  );
+		/* Partial-delivery mode: a successful probe delivers only
+		 * a fraction of the requested amount (askrene under an
+		 * effective maxparts/liquidity limit behaves this way).  */
+		auto delivered_msat = amount_msat * delivery_num
+				    / delivery_den
+				    ;
 		return send_result(id, Json::Out()
 			.start_object()
 				.start_array("routes")
 					.start_object()
 						.field( "amount_msat"
-						      , amount_msat
+						      , delivered_msat
 						      )
 					.end_object()
 				.end_array()
@@ -203,6 +210,10 @@ public:
 	/* Nonzero: every getroutes fails with this code instead of
 	 * the capacity rule.  */
 	std::int64_t error_code;
+	/* Successful probes deliver amount * delivery_num /
+	 * delivery_den (10/10 = full delivery).  */
+	std::uint64_t delivery_num;
+	std::uint64_t delivery_den;
 	std::size_t getroutes_calls;
 	std::vector<std::uint64_t> getroutes_amounts;
 
@@ -211,6 +222,8 @@ public:
 		: socket(std::move(socket_))
 		, capacity_msat(0)
 		, error_code(0)
+		, delivery_num(10)
+		, delivery_den(10)
 		, getroutes_calls(0)
 		, getroutes_amounts()
 	{
@@ -287,6 +300,16 @@ int main() {
 			   , Boss::Msg::ResponseDowser
 			   > dowser_rr(bus);
 
+	/* Boss::log raises JsonCout notifications; capture them so the
+	 * narrowed-Error vs legacy-no-flow log discrimination can be
+	 * asserted.  */
+	auto log_lines = std::make_shared<std::vector<std::string>>();
+	bus.subscribe<Boss::Msg::JsonCout
+		     >([log_lines](Boss::Msg::JsonCout const& m) {
+		log_lines->push_back(m.obj.output());
+		return Ev::lift();
+	});
+
 	int sockets[2];
 	auto res = socketpair(AF_UNIX, SOCK_STREAM, 0, sockets);
 	assert(res >= 0);
@@ -308,9 +331,12 @@ int main() {
 	/* Mirror of the search: the same bisection refine() runs,
 	 * against the same capacity rule the fake server applies,
 	 * computing the delivered amount the Dowser must report
-	 * (before the reserve haircut).  */
+	 * (before the reserve haircut).  delivery_num/delivery_den
+	 * mirror the server's partial-delivery fraction.  */
 	auto expected_delivered = []( La probe_amount
 				     , La capacity
+				     , std::uint64_t dnum
+				     , std::uint64_t dden
 				     ) {
 		auto resolution = La::msat(
 			probe_amount.to_msat() / 32
@@ -320,14 +346,18 @@ int main() {
 		);
 		auto hi = probe_amount;
 		assert(lo <= capacity);
-		auto delivered = lo;
+		auto delivered = La::msat(
+			lo.to_msat() * dnum / dden
+		);
 		while (hi > lo && (hi - lo) > resolution) {
 			auto mid = La::msat(
 				(lo.to_msat() + hi.to_msat()) / 2
 			);
 			if (mid <= capacity) {
 				lo = mid;
-				delivered = mid;
+				delivered = La::msat(
+					mid.to_msat() * dnum / dden
+				);
 			} else
 				hi = mid;
 		}
@@ -390,7 +420,7 @@ int main() {
 		 * flow at the last successful bracket, less the
 		 * reserve haircut.  */
 		auto expected = expected_delivered(
-			probe_amount, La::msat(600000000)
+			probe_amount, La::msat(600000000), 10, 10
 		) * 0.985;
 		assert(r.amount == expected);
 
@@ -426,6 +456,56 @@ int main() {
 	}).then([&](Boss::Msg::ResponseDowser r) {
 		assert(server.getroutes_calls == 1);
 		assert(r.amount == La::sat(0));
+
+		/* Partial delivery: a successful probe delivers only a
+		 * fraction of the requested amount; the search still
+		 * converges, and the report carries the fraction.  */
+		server.error_code = 0;
+		server.capacity_msat = 600000000;
+		server.delivery_num = 6;
+		server.delivery_den = 10;
+		server.getroutes_calls = 0;
+		server.getroutes_amounts.clear();
+		return dowse(probe_target);
+	}).then([&](Boss::Msg::ResponseDowser r) {
+		assert(server.getroutes_calls > 2);
+		auto expected = expected_delivered(
+			probe_amount, La::msat(600000000), 6, 10
+		) * 0.985;
+		assert(r.amount == expected);
+
+		/* -206 is the other expected no-flow code: same
+		 * treatment as -205 (floor probe follows, then the
+		 * no-flow report).  */
+		server.error_code = -206;
+		server.capacity_msat = 0;
+		server.delivery_num = 10;
+		server.delivery_den = 10;
+		server.getroutes_calls = 0;
+		server.getroutes_amounts.clear();
+		return dowse(probe_target);
+	}).then([&](Boss::Msg::ResponseDowser r) {
+		assert(server.getroutes_calls == 2);
+		assert(r.amount == La::sat(0));
+
+		/* Log discrimination: exactly one narrowed Error line
+		 * (the -1 abort in the earlier scenario) and at least
+		 * two legacy no-flow Debug lines (the -205 and -206
+		 * cells) crossed the bus.  */
+		auto narrowed = size_t(0);
+		auto noflow = size_t(0);
+		for (auto const& line : *log_lines) {
+			if (line.find("reporting 0 for this dowse")
+			     != std::string::npos
+			 && line.find("\"level\": \"error\"")
+			     != std::string::npos)
+				++narrowed;
+			if (line.find("found no flow")
+			     != std::string::npos)
+				++noflow;
+		}
+		assert(narrowed == 1);
+		assert(noflow >= 2);
 
 		/* Stop the Rpc module's socket watcher (and unblock
 		 * anything still pending) so the event loop can
