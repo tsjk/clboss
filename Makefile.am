@@ -625,6 +625,8 @@ TESTS = \
 	tests/boss/test_channeledpeers \
 	tests/boss/test_channelfeemanager_zerobasefee \
 	tests/boss/test_channelfinderbypopularity_option \
+	tests/boss/test_dowser_floor \
+	tests/boss/test_dowser_search \
 	tests/boss/test_earningstracker \
 	tests/boss/test_feemon_history \
 	tests/boss/test_feemodderbypricetheory \
