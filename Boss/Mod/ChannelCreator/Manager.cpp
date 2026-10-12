@@ -221,12 +221,11 @@ Manager::on_request_channel_creation(Ln::Amount amt) {
 			 * reachable flow up to the largest channel we'd open.  */
 			return dowser.execute(Msg::RequestDowser{
 				nullptr, proposal, patron, max_amount,
-				/* relevance floor: the planner rejects any
-				 * dowse below min_channel (== our
-				 * min_amount), so flows in
-				 * [min_channel, probe_max/32) must be
-				 * MEASURED, not zeroed by the search's
-				 * floor bracket (E15-d band).  */
+				/* Relevance floor: the planner rejects any
+				 * dowse below min_channel (our min_amount),
+				 * so a flow in [min_channel, probe_max/32)
+				 * must be measured, not zeroed by the
+				 * search's lower bracket.  */
 				min_amount
 			});
 		}).then([this

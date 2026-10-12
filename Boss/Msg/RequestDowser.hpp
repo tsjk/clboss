@@ -32,11 +32,11 @@ struct RequestDowser {
 	 * and the size collapses to it.  */
 	Ln::Amount probe_target;
 	/* Relevance floor for the binary search's lower bracket (0 =
-	 * legacy probe/32).  Sizing callers should pass the SMALLEST
-	 * result they would still act on (clboss-min-channel for the
-	 * creator: the planner rejects anything below it) — otherwise
-	 * flows in [min_channel, probe_max/32) fail the floor probe and
-	 * are zeroed despite being acceptable (E15-d residual band).  */
+	 * probe/32).  Sizing callers pass the smallest result they
+	 * would still act on (clboss-min-channel for the creator: the
+	 * planner rejects anything below it); otherwise a flow in
+	 * [min_channel, probe_max/32) fails the floor probe and is
+	 * zeroed despite being acceptable.  */
 	Ln::Amount floor_target = Ln::Amount::sat(0);
 };
 

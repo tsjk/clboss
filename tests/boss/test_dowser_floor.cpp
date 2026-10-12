@@ -7,7 +7,7 @@
  * Legacy behavior (floor_target == 0): probe/32 + 1 msat.  With a
  * caller relevance threshold: min(probe/32, target/0.985 + 1 sat)
  * + 1 msat -- so flows the caller would accept are never zeroed by
- * the floor gate (the E15-d residual band). */
+ * the floor gate. */
 int main() {
 	using La = Ln::Amount;
 
@@ -27,7 +27,7 @@ int main() {
 		assert(f == La::msat(48223351));
 	}
 
-	/* E15-d vector: probe 36,548,224,350 (max_channel 36M sat),
+	/* Probe 36,548,224,350 (max_channel 36M sat),
 	 * floor_target = min_channel 1,044,100,000 -> scaled
 	 * 1,060,001,000 < resolution 1,142,132,010 -> floor brackets at
 	 * the min-relevant capacity (double math: allow +-1 msat).  */

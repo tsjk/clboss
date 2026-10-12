@@ -96,6 +96,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   candidates were never proposed.  It now keeps every case waiting
   on a node, runs one connect for the node, and hands the outcome to
   all of them.
+- The dowser measures the flow a candidate can reach over several
+  paths instead of answering one fixed probe.  `getroutes` is
+  all-or-nothing at the amount asked, so a single probe at the
+  largest channel size reported no flow for every candidate whose
+  reachable flow fell between the smallest and the largest channel
+  size, and such a candidate was never funded.  The search tries the
+  full amount first, then brackets and halves down to a
+  thirty-second of it; the channel creator passes its minimum
+  channel size as the smallest flow worth measuring.  A `getroutes`
+  failure other than "no route" is logged as an error; before, every
+  error was read as no flow.
 
 ### Credits
 
@@ -107,7 +118,8 @@ Thanks to the contributors to this release:
 - @tsjk: reported the candidate whose only address is of type `dns`
   (#257).
 - @Amperstrand: the preinvestigator's one connect per node for
-  concurrent cases (#341).
+  concurrent cases (#341) and the dowser's search for the flow
+  reachable over several paths (#342).
 
 ## [0.17.1] - 2026-10-07: "Waitin' on a Sunny Day"
 

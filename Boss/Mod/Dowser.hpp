@@ -34,11 +34,10 @@ public:
 	Dowser(Dowser&&) =delete;
 	Dowser(Dowser const&) =delete;
 
-	/* Lower bracket of the binary search: legacy
-	 * probe_amount/32 + 1 msat, or — when the caller passes a
-	 * relevance floor_target — the smaller of that and
-	 * floor_target/0.985 + 1 sat, so flows the caller would accept
-	 * are measured instead of zeroed (the E15-d residual band).
+	/* Lower bracket of the binary search: probe_amount/32 + 1 msat,
+	 * or, when the caller passes a relevance floor_target, the
+	 * smaller of that and floor_target/0.985 + 1 sat, so a flow the
+	 * caller would accept is measured instead of zeroed.
 	 * Pinned by tests/boss/test_dowser_floor.cpp.  */
 	static
 	Ln::Amount floor_probe_amount( Ln::Amount probe_amount

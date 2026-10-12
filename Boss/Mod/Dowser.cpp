@@ -80,9 +80,10 @@ auto const reserve_factor = double(0.985);
 
 /* Is this RpcError the askrene "no flow at this amount" answer
  * (codes 205 "Unable to find a route" and 206 "Route too
- * expensive")?  These are answers, not failures: both the legacy
- * fixed probe and this search read them as zero flow.  lightningd
- * reports them negated per JSON-RPC; accept both spellings.  */
+ * expensive")?  These are answers, not failures: both the fixed
+ * probe before this search and the search itself read them as zero
+ * flow.  lightningd reports the codes as positive numbers; the
+ * negated form is accepted as well.  */
 bool is_no_flow_error(Boss::Mod::RpcError const& e) {
 	auto const& err = e.error;
 	if (!err.is_object() || !err.has("code"))
@@ -290,9 +291,10 @@ private:
 
 	/* Askrene `getroutes` is all-or-nothing at the requested
 	 * amount: a single probe at the caller's ceiling reports
-	 * only ">= ceiling" or 0, hiding mid-range capacities (the
-	 * [min_channel, max_channel) funding dead zone, live-proven
-	 * on regtest and signet).  Recover the estimate:
+	 * only ">= ceiling" or 0, so a flow reachable over several
+	 * paths that falls in [min_channel, max_channel) read as no
+	 * flow and the candidate was never funded.  Recover the
+	 * estimate:
 	 *  1. try the full probe first (the common, cheap path is
 	 *     unchanged -- one RPC for full-capacity candidates);
 	 *  2. on failure, bracket by probing the floor
