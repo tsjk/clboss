@@ -100,7 +100,20 @@ private:
 			auto node_s = std::string(node);
 
 			/* Add to cases being tracked.  */
-			impl.add_case(node_s, shared_from_this());
+			auto first = impl.add_case(node_s, shared_from_this());
+
+			/* One connect per node answers every Case
+			 * waiting on it: raise a single
+			 * RequestConnect when the first Case for the
+			 * node arrives; later Cases on the same node
+			 * are handed the outcome of that connect by
+			 * on_connect.  This removes both the
+			 * response-ordering problem (two connects to
+			 * the same node finishing out of order would
+			 * hand each Case the other's result) and the
+			 * duplicate connects.  */
+			if (!first)
+				return Ev::lift();
 
 			/* Trigger connect.  */
 			return bus.raise(Msg::RequestConnect{
@@ -134,11 +147,19 @@ private:
 		}
 	};
 
-	std::map<std::string, std::shared_ptr<Case>> cases;
-	void add_case( std::string const& node
+	/* Several finders can concurrently preinvestigate batches
+	 * that share a proposal node (e.g. multiple patrons of the
+	 * same popular hub); every Case queued on a node asks the
+	 * same question of it, so one connect per node answers
+	 * them all.  */
+	std::map<std::string, std::vector<std::shared_ptr<Case>>> cases;
+	bool add_case( std::string const& node
 		     , std::shared_ptr<Case> c
 		     ) {
-		cases[node] = std::move(c);
+		auto& waiting = cases[node];
+		auto first = waiting.empty();
+		waiting.push_back(std::move(c));
+		return first;
 	}
 
 	Ev::Io<void> on_preinv(Msg::PreinvestigateChannelCandidates const& p) {
@@ -159,14 +180,28 @@ private:
 		if (it == cases.end())
 			return Ev::lift();
 
-		/* Remove it from cases.  */
-		auto c = std::move(it->second);
+		auto& waiting = it->second;
+		if (waiting.empty())
+			return Ev::lift();
+
+		/* Detach every Case waiting on the node and erase
+		 * the entry before executing them, so that a Case
+		 * re-registering the same node from within the
+		 * fan-out (a surviving Case moving on to its next
+		 * candidate) lands in a fresh entry and triggers a
+		 * fresh connect.  */
+		auto to_answer = std::move(waiting);
 		cases.erase(it);
 
-		/* Execute it.  */
-		return c->on_connect_response(r.success).then([c]() {
-			return Ev::lift();
-		});
+		/* Hand the outcome of the single connect to every
+		 * waiting Case.  */
+		auto act = Ev::lift();
+		for (auto& c : to_answer) {
+			act += c->on_connect_response(r.success).then([c]() {
+				return Ev::lift();
+			});
+		}
+		return act;
 	}
 
 public:

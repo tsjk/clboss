@@ -90,6 +90,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   ten-minute reconciliation uses the same rule as its notifications,
   so a channel shutting down does not make the peer channeled again
   (#366).
+- Two finders proposing the same node at the same time no longer
+  lose a batch.  The preinvestigator kept one in-flight case per
+  node, so the second batch overwrote the first and its remaining
+  candidates were never proposed.  It now keeps every case waiting
+  on a node, runs one connect for the node, and hands the outcome to
+  all of them.
 
 ### Credits
 
@@ -100,6 +106,8 @@ Thanks to the contributors to this release:
   `clboss-status` (#224).
 - @tsjk: reported the candidate whose only address is of type `dns`
   (#257).
+- @Amperstrand: the preinvestigator's one connect per node for
+  concurrent cases (#341).
 
 ## [0.17.1] - 2026-10-07: "Waitin' on a Sunny Day"
 
