@@ -19,7 +19,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   CLBOSS's balance samples and CLN's forwards.  Rows are grouped as
   Grow, Shrink, Spent, Right-sized, Liquidity-limited, Too young and
   Little or no traffic, with a proposed splice amount and what holds
-  each row back.
+  each row back.  Experimental and work in progress: the groups and
+  the proposed changes are a reading of the data, not a
+  recommendation; the tool ships to show the direction and to collect
+  feedback.
 
 ### Changed
 

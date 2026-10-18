@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+# Experimental, work in progress: the output is a reading of the data, not
+# a recommendation.  NOTICE below is printed with every run.
+#
 # Which channels want more capacity on our side, and which carry capital
 # that never moves.  The table is grouped:
 #
@@ -146,6 +149,14 @@ import time
 from tabulate import tabulate
 
 from clboss.alias_cache import lookup_alias
+
+NOTICE = (
+    "EXPERIMENTAL: work in progress.  The groups and the proposed changes "
+    "are a reading of CLBOSS's balance samples and CLN's forwards, not a "
+    "recommendation; check a row against what you know of the peer before "
+    "you splice or close.  The tool is in the release to show the "
+    "direction and to collect feedback: "
+    "https://github.com/ksedgwic/clboss/issues")
 
 HOLD_MAX = 6 * 3600  # a balance sample stands in for at most this long
 MIN_IDLE_SAT = 1_000_000  # MinLoc below this is never worth a splice-out
@@ -584,7 +595,9 @@ def holds_for(row, args, window_days):
 def main():
     parser = argparse.ArgumentParser(
         description="Which channels want more capacity on our side, and "
-                    "which carry capital that never moves")
+                    "which carry capital that never moves.  Experimental, "
+                    "work in progress: a reading of the data, not a "
+                    "recommendation.")
     parser.add_argument("--mainnet", action="store_true", help="Run on mainnet")
     parser.add_argument("--testnet", action="store_true", help="Run on testnet")
     parser.add_argument("--signet", action="store_true", help="Run on signet")
@@ -1067,8 +1080,9 @@ def main():
             j["wait"] = [word for word, _ in r["wait"]]
             j["cost"] = [word for word, _ in r["cost"]]
             out.append(j)
-        print(json.dumps({"since": since, "before": before,
-                          "edge_pct": args.edge, "rows": out}, indent=1))
+        print(json.dumps({"notice": NOTICE, "since": since,
+                          "before": before, "edge_pct": args.edge,
+                          "rows": out}, indent=1))
         return 0
 
     def m(sat):
@@ -1172,6 +1186,12 @@ def main():
 
     table = [[paint(r, c) for c in cols] for r in rows]
 
+    notice = textwrap.fill(NOTICE, width=110)
+    if color:
+        notice = notice.replace("EXPERIMENTAL:",
+                                ANSI_BOLD + "EXPERIMENTAL:" + ANSI_RESET, 1)
+    print(notice)
+    print()
     print(f"window {time.strftime('%Y-%m-%d %H:%M', time.gmtime(since))}Z .. "
           f"{time.strftime('%Y-%m-%d %H:%M', time.gmtime(before))}Z "
           f"({window_days:.1f} d), edge {args.edge:g}%")
