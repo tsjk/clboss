@@ -24,7 +24,10 @@ reason, so the value `lightningd` persists is the one in effect.
   candidate can reach.
 - Connections.  CLBOSS again keeps at most three connections to
   peers without channels.  Since 0.13.2 the limit never applied,
-  and every candidate tested for uptime stayed connected.
+  and every candidate tested for uptime stayed connected.  With CLN
+  26.06.8, which shares connectd's CPU budget across connected
+  peers, those lingering candidates made its per-peer throttle trip
+  on real channel peers.
 - Duplicate funding.  The channel creator checks the channel list
   again right before funding and runs one creation cycle at a time,
   so a peer that got a channel while the plan was made is not
@@ -68,4 +71,5 @@ removed.  The [CHANGELOG](../../CHANGELOG.md) has the full list.
 - [johngribbin](https://github.com/johngribbin) reported the wrong
   dates in `clboss-status`.
 - [tsjk](https://github.com/tsjk) reported the candidate whose only
-  address is of type `dns`.
+  address is of type `dns`, and the gossip-only peers CLBOSS kept
+  connected.
