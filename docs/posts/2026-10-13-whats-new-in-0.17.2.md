@@ -47,7 +47,11 @@ reason, so the value `lightningd` persists is the one in effect.
 `contrib/clboss-channel-sizing` reads CLBOSS's balance samples and
 CLN's forwards and groups each channel as Grow, Shrink, Spent,
 Right-sized, Liquidity-limited, Too young or Little or no traffic,
-with a proposed splice amount.
+with a proposed splice amount.  It is experimental and work in
+progress: the groups and the proposed changes are a reading of the
+data, not a recommendation to act on.  It is in this release to show
+the direction and to collect feedback, so please open an issue with
+what it gets right and what it gets wrong.
 
 ## Upgrading from v0.17.1
 

@@ -88,8 +88,14 @@ how many days of earnings history are considered when ranking channels.
   column within its group.
 - **`clboss-forwarding-stats`** summarizes channel forwarding data and can be
   restricted with `--days`.
-- **`clboss-channel-sizing`** shows which channels want more capacity on
-  our side and which carry capital that never moves.  Each hour of
+- **`clboss-channel-sizing`** (***EXPERIMENTAL***, work in progress)
+  shows which channels want more capacity on our side and which carry
+  capital that never moves.  The groups and the proposed changes are a
+  reading of CLBOSS's balance samples and CLN's forwards, not a
+  recommendation; check a row against what you know of the peer before
+  you splice or close.  The tool is in the release to show the
+  direction and to collect feedback: please open an issue with what it
+  got right and what it got wrong.  Each hour of
   CLBOSS's balance samples is labelled low (local side under `--edge`
   percent of capacity, default 10), high (over 100 - edge) or interior;
   settled forwards are credited to the state their channel was in, giving
