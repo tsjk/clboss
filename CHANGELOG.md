@@ -68,8 +68,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   channels.  Since 0.13.2 the peer list came from `listpeerchannels`,
   which has no entry for a peer without a channel, so the limit never
   applied and every channel candidate that was tested for uptime
-  stayed connected.  The peer list now takes those peers from
-  `listpeers` (#355).
+  stayed connected.  With CLN 26.06.8, which shares connectd's CPU
+  budget across connected peers, those lingering candidates made its
+  per-peer throttle trip on real channel peers.  The peer list now
+  takes those peers from `listpeers` (#355).
 - The uptime test of a channel candidate no longer leaves a
   connection behind: it disconnects after a successful connect, and
   a candidate that is already connected counts as online without a
@@ -119,7 +121,7 @@ Thanks to the contributors to this release:
 - @johngribbin: reported the wrong human-readable dates in
   `clboss-status` (#224).
 - @tsjk: reported the candidate whose only address is of type `dns`
-  (#257).
+  (#257), and the gossip-only peers CLBOSS kept connected (#355).
 - @Amperstrand: the preinvestigator's one connect per node for
   concurrent cases (#341) and the dowser's search for the flow
   reachable over several paths (#342).
