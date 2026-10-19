@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.17.3] - Unreleased
+
+### Fixed
+
+- C++ exceptions are unwound by libgcc's unwinder on Debian and
+  Ubuntu builds.  Those distributions build libunwind with its own
+  exception unwinder, and with `-lunwind` ahead of libstdc++ on the
+  link line it took over every throw in CLBOSS and its tests, which
+  made `make check` fail under valgrind.  The build now links
+  libgcc_s explicitly ahead of libunwind.
+
 ## [0.17.2] - 2026-10-19: "Lost in the Flow"
 
 ### Added
